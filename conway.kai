@@ -96,7 +96,7 @@ fn clear_loop(g: Array[Bool], i: Int) : Unit {
 fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit {
   if c >= 0 and c < cols and r >= 0 and r < rows {
     g[idx(c, r)] := true
-  } else { () }
+  }
 }
 
 # Stamp a pattern given as parallel offset lists (col_offset[i],
@@ -149,7 +149,7 @@ fn seed(g: Array[Bool]) : Unit {
   stamp(g, 5, 35,
     [1, 2, 3, 4, 0, 4, 4, 0, 3],
     [0, 0, 0, 0, 1, 1, 2, 3, 3])
-}
+  }
 
 # ----- rendering -----
 
@@ -164,7 +164,7 @@ fn draw_cells_loop(g: Array[Bool], i: Int) : Unit / Ffi {
       raylib.draw_rectangle(c * cell_size, r * cell_size,
                          cell_size - 1, cell_size - 1,
                          col_alive)
-    } else { () }
+                       }
     draw_cells_loop(g, i + 1)
   }
 }
@@ -208,17 +208,17 @@ fn frame_loop(
     var gen_v = gen
     var which_v = which
 
-    if toggle_pause { paused_v := not @paused_v } else { () }
+    if toggle_pause { paused_v := not @paused_v}
 
     if do_reset {
       seed(current(@which_v, a, b))
       gen_v := 0
-    } else { () }
+    }
 
     if do_clear {
       clear_grid(current(@which_v, a, b))
       gen_v := 0
-    } else { () }
+    }
 
     # --- step ---
     let advance = (not @paused_v) and (frame % step_every == 0)
@@ -228,7 +228,7 @@ fn frame_loop(
       step_into(cur, nxt)
       which_v := 1 - @which_v
       gen_v := @gen_v + 1
-    } else { () }
+    }
 
     # --- draw ---
     raylib.begin_drawing()

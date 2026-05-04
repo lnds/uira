@@ -96,19 +96,19 @@ fn scan_loop(
         let inv = 1.0 / d2
         radd(sep_x, dx * inv)
         radd(sep_y, dy * inv)
-      } else { () }
+      }
 
       if d2 < r_align_sq {
         radd(ali_x, vxs[j])
         radd(ali_y, vys[j])
         iadd(n_ali, 1)
-      } else { () }
+      }
 
       if d2 < r_coh_sq {
         radd(coh_x, xs[j])
         radd(coh_y, ys[j])
         iadd(n_coh, 1)
-      } else { () }
+      }
 
       scan_loop(i, xi, yi, xs, ys, vxs, vys, j + 1,
                 sep_x, sep_y, ali_x, ali_y, n_ali,
@@ -183,7 +183,7 @@ fn step_velocities(
   step_velocities_loop(xs, ys, vxs, vys, next_vxs, next_vys,
                        sep_x, sep_y, ali_x, ali_y, n_ali,
                        coh_x, coh_y, n_coh, 0)
-}
+                     }
 
 fn step_velocities_loop(
   xs: Array[Real], ys: Array[Real],
@@ -299,16 +299,16 @@ fn frame_loop(
 
     if raylib.is_key_pressed(key_space) {
       paused_v := not @paused_v
-    } else { () }
+    }
 
     if raylib.is_key_pressed(key_r) {
       randomize(xs, ys, vxs, vys)
-    } else { () }
+    }
 
     if not @paused_v {
       step_velocities(xs, ys, vxs, vys, next_vxs, next_vys)
       apply_step(xs, ys, vxs, vys, next_vxs, next_vys)
-    } else { () }
+    }
 
     raylib.begin_drawing()
     raylib.clear_background(col_bg)

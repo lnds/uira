@@ -184,28 +184,28 @@ fn handle_input(
     re_min[0] := re_min[0] - d
     re_max[0] := re_max[0] - d
     dirty[0] := 1
-  } else { () }
+  }
 
   if raylib.is_key_pressed(key_right) {
     let d = span_re * pan_step
     re_min[0] := re_min[0] + d
     re_max[0] := re_max[0] + d
     dirty[0] := 1
-  } else { () }
+  }
 
   if raylib.is_key_pressed(key_up) {
     let d = span_im * pan_step
     im_min[0] := im_min[0] - d
     im_max[0] := im_max[0] - d
     dirty[0] := 1
-  } else { () }
+  }
 
   if raylib.is_key_pressed(key_down) {
     let d = span_im * pan_step
     im_min[0] := im_min[0] + d
     im_max[0] := im_max[0] + d
     dirty[0] := 1
-  } else { () }
+  }
 
   let zoom_in =
     raylib.is_key_pressed(key_plus) or raylib.is_key_pressed(key_kp_plus)
@@ -220,7 +220,7 @@ fn handle_input(
     im_min[0] := cim - new_half_im
     im_max[0] := cim + new_half_im
     dirty[0] := 1
-  } else { () }
+  }
 
   let zoom_out =
     raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_minus)
@@ -234,7 +234,7 @@ fn handle_input(
     im_min[0] := cim - new_half_im
     im_max[0] := cim + new_half_im
     dirty[0] := 1
-  } else { () }
+  }
 
   if raylib.is_key_pressed(key_r) {
     re_min[0] := default_re_min
@@ -242,7 +242,7 @@ fn handle_input(
     im_min[0] := default_im_min
     im_max[0] := default_im_max
     dirty[0] := 1
-  } else { () }
+  }
 }
 
 fn frame_loop(
@@ -266,7 +266,7 @@ fn frame_loop(
 
       compute(buf, re_min[0], re_max[0], im_min[0], im_max[0])
       dirty[0] := 0
-    } else { () }
+    }
 
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
