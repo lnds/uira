@@ -1,0 +1,358 @@
+# Snake — kaikai + raylib
+#
+# 32x24 grid, 25 px per cell (800x600 window). Classic rules:
+# eat apple to grow, lose by hitting a wall or your own body.
+# Controls: arrows to turn, R to restart after game over, ESC
+# to quit.
+
+import ffi.raylib
+
+# ----- grid / window -----
+
+const cols      : Int = 32
+const rows      : Int = 24
+const cell_size : Int = 25
+const grid_len  : Int = 768   # cols * rows
+
+# Snake body lives in two parallel Array[Int]s of length grid_len
+# (the maximum body size). We use a circular ring: tail_idx is
+# the index of the tail in the buffer, head_idx is the index of
+# the head. length = (head_idx - tail_idx + grid_len) % grid_len
+# + 1. Indices wrap modulo grid_len.
+
+const max_body : Int = 768
+
+# Step rate: one step every `step_every` frames.
+const step_every : Int = 6   # 60 fps / 6 = 10 steps/sec
+
+# Directions encoded as small ints to keep things primitive.
+const dir_right : Int = 0
+const dir_down  : Int = 1
+const dir_left  : Int = 2
+const dir_up    : Int = 3
+
+# Keys.
+const key_left  : Int = 263
+const key_right : Int = 262
+const key_up    : Int = 265
+const key_down  : Int = 264
+const key_r     : Int = 82
+
+# Colors (0xRRGGBBAA).
+const col_bg        : Int = 0x101820FF
+const col_grid_dark : Int = 0x182030FF
+const col_snake     : Int = 0x6cfff5FF   # mint cyan body
+const col_head      : Int = 0xfdf9b9FF   # pale yellow head
+const col_apple     : Int = 0xff5050FF   # red
+const col_text      : Int = 0xfdf9b9FF
+const col_dim       : Int = 0x808090FF
+
+# ----- ref-cell helpers (kaikai's vars don't pass by reference,
+# so we lift mutable scalars into single-cell arrays) -----
+
+fn icell(init: Int) : Array[Int] {
+  let a = array_make(1, 0)
+  a[0] := init
+  a
+}
+
+# ----- random apple placement -----
+#
+# Pick a random cell that isn't occupied by the snake. With <= 768
+# cells we just rejection-sample.
+
+fn place_apple(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Int, tail_idx: Int,
+  apple_x: Array[Int], apple_y: Array[Int]
+) : Unit / Ffi {
+  let ax = raylib.get_random_value(0, cols - 1)
+  let ay = raylib.get_random_value(0, rows - 1)
+  if cell_in_body(body_x, body_y, head_idx, tail_idx, ax, ay) {
+    place_apple(body_x, body_y, head_idx, tail_idx, apple_x, apple_y)
+  } else {
+    apple_x[0] := ax
+    apple_y[0] := ay
+  }
+}
+
+# Linear walk from tail to head over the ring, looking for (x, y).
+fn cell_in_body(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Int, tail_idx: Int,
+  x: Int, y: Int
+) : Bool = cell_in_body_loop(body_x, body_y, head_idx, tail_idx, x, y, tail_idx)
+
+fn cell_in_body_loop(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Int, tail_idx: Int,
+  x: Int, y: Int,
+  i: Int
+) : Bool {
+  if body_x[i] == x and body_y[i] == y { true }
+  else if i == head_idx { false }
+  else {
+    let next = (i + 1) % max_body
+    cell_in_body_loop(body_x, body_y, head_idx, tail_idx, x, y, next)
+  }
+}
+
+# ----- reset -----
+
+fn reset(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Array[Int], tail_idx: Array[Int],
+  direction: Array[Int], pending_dir: Array[Int],
+  apple_x: Array[Int], apple_y: Array[Int],
+  score: Array[Int], game_over: Array[Int]
+) : Unit / Ffi {
+  # Snake starts as 3 cells stacked horizontally near the centre,
+  # facing right. Buffer slots 0, 1, 2 hold (tail, mid, head).
+  body_x[0] := 14; body_y[0] := 12
+  body_x[1] := 15; body_y[1] := 12
+  body_x[2] := 16; body_y[2] := 12
+  tail_idx[0] := 0
+  head_idx[0] := 2
+  direction[0] := dir_right
+  pending_dir[0] := dir_right
+  score[0] := 0
+  game_over[0] := 0
+  place_apple(body_x, body_y, head_idx[0], tail_idx[0], apple_x, apple_y)
+}
+
+# ----- input -----
+#
+# Buffer the next direction; only commit it on the step boundary
+# so a fast double-tap can't reverse the snake into itself.
+
+fn read_input(direction: Array[Int], pending_dir: Array[Int]) : Unit / Ffi {
+  if raylib.is_key_pressed(key_left) {
+    if direction[0] != dir_right { pending_dir[0] := dir_left } else { () }
+  } else { () }
+  if raylib.is_key_pressed(key_right) {
+    if direction[0] != dir_left { pending_dir[0] := dir_right } else { () }
+  } else { () }
+  if raylib.is_key_pressed(key_up) {
+    if direction[0] != dir_down { pending_dir[0] := dir_up } else { () }
+  } else { () }
+  if raylib.is_key_pressed(key_down) {
+    if direction[0] != dir_up { pending_dir[0] := dir_down } else { () }
+  } else { () }
+}
+
+# ----- step -----
+
+fn dx_of(d: Int) : Int {
+  if d == dir_right { 1 }
+  else if d == dir_left { 0 - 1 }
+  else { 0 }
+}
+
+fn dy_of(d: Int) : Int {
+  if d == dir_down { 1 }
+  else if d == dir_up { 0 - 1 }
+  else { 0 }
+}
+
+fn step(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Array[Int], tail_idx: Array[Int],
+  direction: Array[Int], pending_dir: Array[Int],
+  apple_x: Array[Int], apple_y: Array[Int],
+  score: Array[Int], game_over: Array[Int]
+) : Unit / Ffi {
+  direction[0] := pending_dir[0]
+  let hx = body_x[head_idx[0]] + dx_of(direction[0])
+  let hy = body_y[head_idx[0]] + dy_of(direction[0])
+
+  # Wall collision.
+  if hx < 0 or hx >= cols or hy < 0 or hy >= rows {
+    game_over[0] := 1
+  } else {
+    # Self collision — but we ignore the *current* tail cell
+    # because if we don't grow, that slot is about to be
+    # vacated. We handle this by advancing tail BEFORE the
+    # collision test when not growing.
+    let ate = (hx == apple_x[0]) and (hy == apple_y[0])
+
+    let effective_tail =
+      if ate { tail_idx[0] }
+      else { (tail_idx[0] + 1) % max_body }
+
+    if cell_in_body_range(body_x, body_y, effective_tail, head_idx[0], hx, hy) {
+      game_over[0] := 1
+    } else {
+      # Advance head.
+      let new_head = (head_idx[0] + 1) % max_body
+      body_x[new_head] := hx
+      body_y[new_head] := hy
+      head_idx[0] := new_head
+
+      if ate {
+        score[0] := score[0] + 1
+        place_apple(body_x, body_y, head_idx[0], tail_idx[0], apple_x, apple_y)
+      } else {
+        tail_idx[0] := (tail_idx[0] + 1) % max_body
+      }
+    }
+  }
+}
+
+# Variant that takes an explicit start (for the self-collision
+# check during step where we want to skip the soon-to-be-vacated
+# tail cell).
+fn cell_in_body_range(
+  body_x: Array[Int], body_y: Array[Int],
+  start_idx: Int, end_idx: Int,
+  x: Int, y: Int
+) : Bool = cell_in_body_range_loop(body_x, body_y, end_idx, x, y, start_idx)
+
+fn cell_in_body_range_loop(
+  body_x: Array[Int], body_y: Array[Int],
+  end_idx: Int, x: Int, y: Int,
+  i: Int
+) : Bool {
+  if body_x[i] == x and body_y[i] == y { true }
+  else if i == end_idx { false }
+  else {
+    let next = (i + 1) % max_body
+    cell_in_body_range_loop(body_x, body_y, end_idx, x, y, next)
+  }
+}
+
+# ----- render -----
+
+fn draw_grid() : Unit / Ffi = draw_grid_rows(0)
+
+fn draw_grid_rows(r: Int) : Unit / Ffi {
+  if r >= rows { () }
+  else {
+    draw_grid_cols(r, 0)
+    draw_grid_rows(r + 1)
+  }
+}
+
+fn draw_grid_cols(r: Int, c: Int) : Unit / Ffi {
+  if c >= cols { () }
+  else {
+    # Subtle checkerboard so the playfield is legible.
+    let dark = (c + r) % 2 == 0
+    if dark {
+      raylib.draw_rectangle(c * cell_size, r * cell_size,
+                            cell_size, cell_size, col_grid_dark)
+    } else { () }
+    draw_grid_cols(r, c + 1)
+  }
+}
+
+fn draw_snake(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Int, tail_idx: Int
+) : Unit / Ffi = draw_snake_loop(body_x, body_y, head_idx, tail_idx, tail_idx)
+
+fn draw_snake_loop(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Int, tail_idx: Int,
+  i: Int
+) : Unit / Ffi {
+  let x = body_x[i]
+  let y = body_y[i]
+  let col = if i == head_idx { col_head } else { col_snake }
+  raylib.draw_rectangle(x * cell_size + 1, y * cell_size + 1,
+                        cell_size - 2, cell_size - 2, col)
+  if i == head_idx { () }
+  else {
+    let next = (i + 1) % max_body
+    draw_snake_loop(body_x, body_y, head_idx, tail_idx, next)
+  }
+}
+
+fn draw_apple(apple_x: Int, apple_y: Int) : Unit / Ffi {
+  raylib.draw_rectangle(apple_x * cell_size + 4, apple_y * cell_size + 4,
+                        cell_size - 8, cell_size - 8, col_apple)
+}
+
+fn draw_hud(score: Int, game_over: Bool) : Unit / Ffi {
+  raylib.draw_text("snake / kaikai + raylib", 10, 8, 14, col_text)
+  raylib.draw_text("arrows turn   R restart   ESC quit",
+                   10, 580, 14, col_dim)
+  raylib.draw_text("score ", 660, 8, 14, col_dim)
+  raylib.draw_text(int_to_string(score), 720, 8, 14, col_text)
+
+  if game_over {
+    raylib.draw_rectangle(220, 240, 360, 120, 0x000000c8)
+    raylib.draw_text("GAME OVER", 290, 270, 40, col_apple)
+    raylib.draw_text("press R to play again", 280, 320, 20, col_text)
+  } else { () }
+}
+
+# ----- main loop -----
+
+fn frame_loop(
+  body_x: Array[Int], body_y: Array[Int],
+  head_idx: Array[Int], tail_idx: Array[Int],
+  direction: Array[Int], pending_dir: Array[Int],
+  apple_x: Array[Int], apple_y: Array[Int],
+  score: Array[Int], game_over: Array[Int],
+  frame: Int
+) : Unit / Ffi {
+  if raylib.window_should_close() { () }
+  else {
+    # Restart on R, even mid-game.
+    if raylib.is_key_pressed(key_r) {
+      reset(body_x, body_y, head_idx, tail_idx,
+            direction, pending_dir,
+            apple_x, apple_y, score, game_over)
+    } else { () }
+
+    if game_over[0] == 0 {
+      read_input(direction, pending_dir)
+      if frame % step_every == 0 {
+        step(body_x, body_y, head_idx, tail_idx,
+             direction, pending_dir,
+             apple_x, apple_y, score, game_over)
+      } else { () }
+    } else { () }
+
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_grid()
+    draw_apple(apple_x[0], apple_y[0])
+    draw_snake(body_x, body_y, head_idx[0], tail_idx[0])
+    draw_hud(score[0], game_over[0] != 0)
+    raylib.end_drawing()
+
+    frame_loop(body_x, body_y, head_idx, tail_idx,
+               direction, pending_dir,
+               apple_x, apple_y, score, game_over,
+               frame + 1)
+  }
+}
+
+fn main() : Unit / Ffi {
+  raylib.set_random_seed(42)
+
+  let body_x = array_make(max_body, 0)
+  let body_y = array_make(max_body, 0)
+  let head_idx = icell(0)
+  let tail_idx = icell(0)
+  let direction = icell(dir_right)
+  let pending_dir = icell(dir_right)
+  let apple_x = icell(8)
+  let apple_y = icell(12)
+  let score = icell(0)
+  let game_over = icell(0)
+
+  raylib.init_window(800, 600, "Snake / kaikai + raylib")
+  raylib.set_target_fps(60)
+
+  reset(body_x, body_y, head_idx, tail_idx,
+        direction, pending_dir,
+        apple_x, apple_y, score, game_over)
+
+  frame_loop(body_x, body_y, head_idx, tail_idx,
+             direction, pending_dir,
+             apple_x, apple_y, score, game_over,
+             0)
+  raylib.close_window()
+}

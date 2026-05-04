@@ -1,0 +1,116 @@
+# Shared raylib FFI bindings.
+#
+# kaikai's `pub axiom` does not currently export across modules
+# (issue #244 in lnds/kaikai), so each axiom is private to this
+# module and we re-expose it through a thin `pub fn` wrapper.
+# `cc -O2` inlines the wrapper away.
+
+# ----- window / lifecycle -----
+
+[<extern_c>]
+axiom kai_init_window(w: Int, h: Int, title: String) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_close_window() : Unit / Ffi
+
+[<extern_c>]
+axiom kai_window_should_close() : Bool / Ffi
+
+[<extern_c>]
+axiom kai_set_target_fps(fps: Int) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_get_fps() : Int / Ffi
+
+[<extern_c>]
+axiom kai_get_time() : Real / Ffi
+
+pub fn init_window(w: Int, h: Int, title: String) : Unit / Ffi =
+  kai_init_window(w, h, title)
+
+pub fn close_window() : Unit / Ffi = kai_close_window()
+pub fn window_should_close() : Bool / Ffi = kai_window_should_close()
+pub fn set_target_fps(fps: Int) : Unit / Ffi = kai_set_target_fps(fps)
+pub fn get_fps() : Int / Ffi = kai_get_fps()
+pub fn get_time() : Real / Ffi = kai_get_time()
+
+# ----- frame -----
+
+[<extern_c>]
+axiom kai_begin_drawing() : Unit / Ffi
+
+[<extern_c>]
+axiom kai_end_drawing() : Unit / Ffi
+
+[<extern_c>]
+axiom kai_clear_background(color: Int) : Unit / Ffi
+
+pub fn begin_drawing() : Unit / Ffi = kai_begin_drawing()
+pub fn end_drawing() : Unit / Ffi = kai_end_drawing()
+pub fn clear_background(color: Int) : Unit / Ffi = kai_clear_background(color)
+
+# ----- shapes / text -----
+
+[<extern_c>]
+axiom kai_draw_rectangle(x: Int, y: Int, w: Int, h: Int, color: Int) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_draw_pixel(x: Int, y: Int, color: Int) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_draw_text(s: String, x: Int, y: Int, size: Int, color: Int) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_draw_triangle(x1: Real, y1: Real, x2: Real, y2: Real,
+                        x3: Real, y3: Real, color: Int) : Unit / Ffi
+
+pub fn draw_rectangle(x: Int, y: Int, w: Int, h: Int, color: Int) : Unit / Ffi =
+  kai_draw_rectangle(x, y, w, h, color)
+
+pub fn draw_pixel(x: Int, y: Int, color: Int) : Unit / Ffi =
+  kai_draw_pixel(x, y, color)
+
+pub fn draw_text(s: String, x: Int, y: Int, size: Int, color: Int) : Unit / Ffi =
+  kai_draw_text(s, x, y, size, color)
+
+pub fn draw_triangle(x1: Real, y1: Real, x2: Real, y2: Real,
+                     x3: Real, y3: Real, color: Int) : Unit / Ffi =
+  kai_draw_triangle(x1, y1, x2, y2, x3, y3, color)
+
+# ----- input -----
+
+[<extern_c>]
+axiom kai_is_key_pressed(key: Int) : Bool / Ffi
+
+pub fn is_key_pressed(key: Int) : Bool / Ffi = kai_is_key_pressed(key)
+
+# ----- random -----
+
+[<extern_c>]
+axiom kai_set_random_seed(s: Int) : Unit / Ffi
+
+[<extern_c>]
+axiom kai_get_random_value(min: Int, max: Int) : Int / Ffi
+
+pub fn set_random_seed(s: Int) : Unit / Ffi = kai_set_random_seed(s)
+pub fn get_random_value(min: Int, max: Int) : Int / Ffi =
+  kai_get_random_value(min, max)
+
+# ----- math -----
+
+[<extern_c>]
+axiom kai_sin(x: Real) : Real / Ffi
+
+[<extern_c>]
+axiom kai_cos(x: Real) : Real / Ffi
+
+[<extern_c>]
+axiom kai_atan2(y: Real, x: Real) : Real / Ffi
+
+[<extern_c>]
+axiom kai_sqrt(x: Real) : Real / Ffi
+
+pub fn sin(x: Real) : Real / Ffi = kai_sin(x)
+pub fn cos(x: Real) : Real / Ffi = kai_cos(x)
+pub fn atan2(y: Real, x: Real) : Real / Ffi = kai_atan2(y, x)
+pub fn sqrt(x: Real) : Real / Ffi = kai_sqrt(x)

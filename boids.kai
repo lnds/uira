@@ -1,0 +1,337 @@
+# Boids flocking — kaikai + raylib
+#
+# 150 boids in 800x600 with classic Reynolds rules: separation,
+# alignment, cohesion. O(n²) is fine at this scale (~22500
+# pair-checks per frame, 60 fps). Controls: SPACE pause, R
+# randomize, ESC quit.
+
+import ffi.raylib
+
+# ----- constants -----
+
+const count : Int = 150
+
+const width  : Real = 800.0
+const height : Real = 600.0
+
+const r_sep_sq   : Real = 484.0    # 22^2 — separation
+const r_align_sq : Real = 2500.0   # 50^2 — alignment
+const r_coh_sq   : Real = 3600.0   # 60^2 — cohesion
+
+const w_sep   : Real = 0.05
+const w_align : Real = 0.05
+const w_coh   : Real = 0.005
+
+const max_speed : Real = 3.5
+
+const key_space : Int = 32
+const key_r     : Int = 82
+
+const col_bg   : Int = 0x0a0a14FF
+const col_boid : Int = 0xfdf9b9FF
+const col_text : Int = 0xfdf9b9FF
+
+# ----- helpers -----
+#
+# Single-element Array[Real]/Array[Int] as ref-cells: kaikai
+# arrays are by-reference, so a recursive scan can mutate them in
+# place without threading the accumulators through every call.
+
+fn rcell() : Array[Real] = array_make(1, 0.0)
+fn icell() : Array[Int]  = array_make(1, 0)
+
+fn rclear(c: Array[Real]) : Unit { c[0] := 0.0 }
+fn iclear(c: Array[Int]) : Unit  { c[0] := 0 }
+
+fn radd(c: Array[Real], v: Real) : Unit { c[0] := c[0] + v }
+fn iadd(c: Array[Int], v: Int) : Unit   { c[0] := c[0] + v }
+
+# ----- state -----
+
+fn randomize(xs: Array[Real], ys: Array[Real],
+             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi =
+  randomize_loop(xs, ys, vxs, vys, 0)
+
+fn randomize_loop(xs: Array[Real], ys: Array[Real],
+                  vxs: Array[Real], vys: Array[Real], i: Int) : Unit / Ffi {
+  if i >= count { () }
+  else {
+    xs[i] := int_to_real(raylib.get_random_value(0, 800))
+    ys[i] := int_to_real(raylib.get_random_value(0, 600))
+    let vx_raw = int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    let vy_raw = int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    vxs[i] := vx_raw
+    vys[i] := vy_raw
+    randomize_loop(xs, ys, vxs, vys, i + 1)
+  }
+}
+
+# ----- scanning neighbours -----
+#
+# Walk all j != i, classify pair distance against each radius,
+# accumulate sep/ali/coh contributions into ref-cells.
+
+fn scan_loop(
+  i: Int, xi: Real, yi: Real,
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  j: Int,
+  sep_x: Array[Real], sep_y: Array[Real],
+  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
+  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
+) : Unit {
+  if j >= count { () }
+  else {
+    if j == i {
+      scan_loop(i, xi, yi, xs, ys, vxs, vys, j + 1,
+                sep_x, sep_y, ali_x, ali_y, n_ali,
+                coh_x, coh_y, n_coh)
+    } else {
+      let dx = xi - xs[j]
+      let dy = yi - ys[j]
+      let d2 = dx * dx + dy * dy
+
+      if d2 < r_sep_sq and d2 > 0.0001 {
+        # Push away — weight by 1/d² so close neighbours dominate.
+        let inv = 1.0 / d2
+        radd(sep_x, dx * inv)
+        radd(sep_y, dy * inv)
+      } else { () }
+
+      if d2 < r_align_sq {
+        radd(ali_x, vxs[j])
+        radd(ali_y, vys[j])
+        iadd(n_ali, 1)
+      } else { () }
+
+      if d2 < r_coh_sq {
+        radd(coh_x, xs[j])
+        radd(coh_y, ys[j])
+        iadd(n_coh, 1)
+      } else { () }
+
+      scan_loop(i, xi, yi, xs, ys, vxs, vys, j + 1,
+                sep_x, sep_y, ali_x, ali_y, n_ali,
+                coh_x, coh_y, n_coh)
+    }
+  }
+}
+
+# ----- per-boid step -----
+
+fn wrap_pos(v: Real, max: Real) : Real {
+  if v < 0.0 { v + max }
+  else if v >= max { v - max }
+  else { v }
+}
+
+# Step boid i: read from (xs, ys, vxs, vys), write next velocity
+# to (out_vxs, out_vys). Position update happens after all
+# velocities are computed (in step_apply).
+fn step_one(
+  i: Int,
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  out_vxs: Array[Real], out_vys: Array[Real],
+  sep_x: Array[Real], sep_y: Array[Real],
+  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
+  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
+) : Unit {
+  let xi = xs[i]
+  let yi = ys[i]
+  let vxi = vxs[i]
+  let vyi = vys[i]
+
+  rclear(sep_x); rclear(sep_y)
+  rclear(ali_x); rclear(ali_y); iclear(n_ali)
+  rclear(coh_x); rclear(coh_y); iclear(n_coh)
+
+  scan_loop(i, xi, yi, xs, ys, vxs, vys, 0,
+            sep_x, sep_y, ali_x, ali_y, n_ali,
+            coh_x, coh_y, n_coh)
+
+  let coh_dx = if n_coh[0] > 0 { (coh_x[0] / int_to_real(n_coh[0])) - xi } else { 0.0 }
+  let coh_dy = if n_coh[0] > 0 { (coh_y[0] / int_to_real(n_coh[0])) - yi } else { 0.0 }
+  let ali_dx = if n_ali[0] > 0 { (ali_x[0] / int_to_real(n_ali[0])) - vxi } else { 0.0 }
+  let ali_dy = if n_ali[0] > 0 { (ali_y[0] / int_to_real(n_ali[0])) - vyi } else { 0.0 }
+
+  let new_vx = vxi + w_sep * sep_x[0] + w_align * ali_dx + w_coh * coh_dx
+  let new_vy = vyi + w_sep * sep_y[0] + w_align * ali_dy + w_coh * coh_dy
+
+  let speed_sq = new_vx * new_vx + new_vy * new_vy
+  let max_sq = max_speed * max_speed
+  if speed_sq > max_sq {
+    let s = raylib.sqrt(speed_sq)
+    let scale = max_speed / s
+    out_vxs[i] := new_vx * scale
+    out_vys[i] := new_vy * scale
+  } else {
+    out_vxs[i] := new_vx
+    out_vys[i] := new_vy
+  }
+}
+
+# Run step_one for every boid into the `next_v` arrays.
+fn step_velocities(
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  next_vxs: Array[Real], next_vys: Array[Real]
+) : Unit / Ffi {
+  let sep_x = rcell(); let sep_y = rcell()
+  let ali_x = rcell(); let ali_y = rcell(); let n_ali = icell()
+  let coh_x = rcell(); let coh_y = rcell(); let n_coh = icell()
+  step_velocities_loop(xs, ys, vxs, vys, next_vxs, next_vys,
+                       sep_x, sep_y, ali_x, ali_y, n_ali,
+                       coh_x, coh_y, n_coh, 0)
+}
+
+fn step_velocities_loop(
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  next_vxs: Array[Real], next_vys: Array[Real],
+  sep_x: Array[Real], sep_y: Array[Real],
+  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
+  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int],
+  i: Int
+) : Unit {
+  if i >= count { () }
+  else {
+    step_one(i, xs, ys, vxs, vys, next_vxs, next_vys,
+             sep_x, sep_y, ali_x, ali_y, n_ali,
+             coh_x, coh_y, n_coh)
+    step_velocities_loop(xs, ys, vxs, vys, next_vxs, next_vys,
+                         sep_x, sep_y, ali_x, ali_y, n_ali,
+                         coh_x, coh_y, n_coh, i + 1)
+  }
+}
+
+# Apply new velocities to positions, with screen wrap. Velocities
+# in (vxs, vys) are overwritten from (next_vxs, next_vys).
+fn apply_step(
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  next_vxs: Array[Real], next_vys: Array[Real]
+) : Unit = apply_loop(xs, ys, vxs, vys, next_vxs, next_vys, 0)
+
+fn apply_loop(
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  next_vxs: Array[Real], next_vys: Array[Real],
+  i: Int
+) : Unit {
+  if i >= count { () }
+  else {
+    vxs[i] := next_vxs[i]
+    vys[i] := next_vys[i]
+    xs[i] := wrap_pos(xs[i] + vxs[i], width)
+    ys[i] := wrap_pos(ys[i] + vys[i], height)
+    apply_loop(xs, ys, vxs, vys, next_vxs, next_vys, i + 1)
+  }
+}
+
+# ----- rendering -----
+#
+# Triangle pointing along the velocity vector. The body is
+# computed in local frame (tip at +x), then rotated by the
+# velocity heading and translated to (x, y).
+
+fn boid_size() : Real = 7.0
+
+fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
+  let speed_sq = vx * vx + vy * vy
+  let theta =
+    if speed_sq < 0.0001 { 0.0 }
+    else { raylib.atan2(vy, vx) }
+  let ct = raylib.cos(theta)
+  let st = raylib.sin(theta)
+  let sz = boid_size()
+
+  # Local triangle: tip at (sz, 0), tail corners at (-sz/2, ±sz/2).
+  let tip_lx = sz;      let tip_ly = 0.0
+  let l_lx  = 0.0 - (sz * 0.5); let l_ly = 0.0 - (sz * 0.6)
+  let r_lx  = 0.0 - (sz * 0.5); let r_ly = sz * 0.6
+
+  let tip_wx = ct * tip_lx - st * tip_ly + x
+  let tip_wy = st * tip_lx + ct * tip_ly + y
+  let l_wx   = ct * l_lx   - st * l_ly   + x
+  let l_wy   = st * l_lx   + ct * l_ly   + y
+  let r_wx   = ct * r_lx   - st * r_ly   + x
+  let r_wy   = st * r_lx   + ct * r_ly   + y
+
+  # raylib DrawTriangle expects clockwise winding; our (tip, left,
+  # right) order is clockwise in raylib's y-down screen.
+  raylib.draw_triangle(tip_wx, tip_wy, l_wx, l_wy, r_wx, r_wy, col_boid)
+}
+
+fn draw_all(xs: Array[Real], ys: Array[Real],
+            vxs: Array[Real], vys: Array[Real]) : Unit / Ffi =
+  draw_loop(xs, ys, vxs, vys, 0)
+
+fn draw_loop(xs: Array[Real], ys: Array[Real],
+             vxs: Array[Real], vys: Array[Real], i: Int) : Unit / Ffi {
+  if i >= count { () }
+  else {
+    draw_one(xs[i], ys[i], vxs[i], vys[i])
+    draw_loop(xs, ys, vxs, vys, i + 1)
+  }
+}
+
+fn draw_hud(paused: Bool) : Unit / Ffi {
+  raylib.draw_text("boids / kaikai + raylib", 10, 8, 14, col_text)
+  raylib.draw_text("SPACE pause   R randomize   ESC quit",
+                10, 580, 14, col_text)
+  let label = if paused { "PAUSED   fps " } else { "running  fps " }
+  raylib.draw_text(label, 580, 8, 14, col_text)
+  raylib.draw_text(int_to_string(raylib.get_fps()), 700, 8, 14, col_text)
+}
+
+# ----- main loop -----
+
+fn frame_loop(
+  xs: Array[Real], ys: Array[Real],
+  vxs: Array[Real], vys: Array[Real],
+  next_vxs: Array[Real], next_vys: Array[Real],
+  paused: Bool
+) : Unit / Ffi {
+  if raylib.window_should_close() { () }
+  else {
+    var paused_v = paused
+
+    if raylib.is_key_pressed(key_space) {
+      paused_v := not @paused_v
+    } else { () }
+
+    if raylib.is_key_pressed(key_r) {
+      randomize(xs, ys, vxs, vys)
+    } else { () }
+
+    if not @paused_v {
+      step_velocities(xs, ys, vxs, vys, next_vxs, next_vys)
+      apply_step(xs, ys, vxs, vys, next_vxs, next_vys)
+    } else { () }
+
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_all(xs, ys, vxs, vys)
+    draw_hud(@paused_v)
+    raylib.end_drawing()
+
+    frame_loop(xs, ys, vxs, vys, next_vxs, next_vys, @paused_v)
+  }
+}
+
+fn main() : Unit / Ffi {
+  raylib.set_random_seed(42)
+  let xs = array_make(count, 0.0)
+  let ys = array_make(count, 0.0)
+  let vxs = array_make(count, 0.0)
+  let vys = array_make(count, 0.0)
+  let next_vxs = array_make(count, 0.0)
+  let next_vys = array_make(count, 0.0)
+  randomize(xs, ys, vxs, vys)
+
+  raylib.init_window(800, 600, "Boids / kaikai + raylib")
+  raylib.set_target_fps(60)
+  frame_loop(xs, ys, vxs, vys, next_vxs, next_vys, false)
+  raylib.close_window()
+}

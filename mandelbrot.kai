@@ -1,0 +1,305 @@
+# Mandelbrot set — kaikai + raylib
+#
+# 400x300 internal grid, blitted to an 800x600 window as 2x2
+# rectangles. The set is computed once into an Array[Int] of
+# iteration counts; the render loop just paints from it. Pan
+# (arrow keys) and zoom (+/-) trigger a recompute.
+
+import ffi.raylib
+
+# ----- viewport / iteration -----
+
+const cw : Int = 400          # internal columns
+const ch : Int = 300          # internal rows
+const px : Int = 2            # pixel size on the screen (cw*px = 800)
+const buf_len : Int = 120000  # cw * ch
+
+const max_iter : Int = 100
+
+# Default Mandelbrot view.
+const default_re_min : Real = 0.0 - 2.5
+const default_re_max : Real = 1.0
+const default_im_min : Real = 0.0 - 1.0
+const default_im_max : Real = 1.0
+
+# Pan / zoom step (fractions of current span per keypress).
+const pan_step  : Real = 0.15
+const zoom_step : Real = 0.7
+
+# Keys (raylib codes).
+const key_left  : Int = 263
+const key_right : Int = 262
+const key_up    : Int = 265
+const key_down  : Int = 264
+const key_plus  : Int = 61   # `=`/`+` row
+const key_kp_plus  : Int = 334
+const key_minus : Int = 45
+const key_kp_minus : Int = 333
+const key_r     : Int = 82
+
+# Background while we recompute.
+const col_bg : Int = 0x000010FF
+
+# ----- iteration kernel -----
+#
+# z_{n+1} = z_n^2 + c, starting at z_0 = 0. Returns the iteration
+# count at which |z|^2 first exceeded 4, or max_iter if it
+# stayed bounded (interior point).
+
+fn iterate(c_re: Real, c_im: Real) : Int = iter_loop(c_re, c_im, 0.0, 0.0, 0)
+
+fn iter_loop(c_re: Real, c_im: Real, z_re: Real, z_im: Real, n: Int) : Int {
+  if n >= max_iter { max_iter }
+  else {
+    let z_re2 = z_re * z_re
+    let z_im2 = z_im * z_im
+    if z_re2 + z_im2 > 4.0 { n }
+    else {
+      let new_re = z_re2 - z_im2 + c_re
+      let new_im = 2.0 * z_re * z_im + c_im
+      iter_loop(c_re, c_im, new_re, new_im, n + 1)
+    }
+  }
+}
+
+# ----- compute pass -----
+#
+# Walk the cw*ch grid; for each pixel compute the iter count and
+# stash it in `buf`. Single linear index, recursion + TCO.
+
+fn compute(buf: Array[Int],
+           re_min: Real, re_max: Real,
+           im_min: Real, im_max: Real) : Unit {
+  let dre = (re_max - re_min) / int_to_real(cw)
+  let dim = (im_max - im_min) / int_to_real(ch)
+  compute_loop(buf, re_min, im_min, dre, dim, 0)
+}
+
+fn compute_loop(buf: Array[Int],
+                re_min: Real, im_min: Real,
+                dre: Real, dim: Real,
+                i: Int) : Unit {
+  if i >= buf_len { () }
+  else {
+    let cx = i % cw
+    let cy = i / cw
+    let c_re = re_min + int_to_real(cx) * dre
+    let c_im = im_min + int_to_real(cy) * dim
+    buf[i] := iterate(c_re, c_im)
+    compute_loop(buf, re_min, im_min, dre, dim, i + 1)
+  }
+}
+
+# ----- coloring -----
+#
+# Discrete gradient mapped from iter count to a smooth blue→
+# orange→white sweep. Interior (n == max_iter) renders black.
+#
+# The colours come from a hand-picked 8-stop palette. Each stop
+# is precomputed as a packed RGBA Int. Index = (n * stops) /
+# max_iter.
+
+const palette_stops : Int = 16
+
+# Pre-baked palette — 16 stops of a "fire" gradient, ending in
+# near-white. Index 0 is dark navy, index 15 is hot white-yellow.
+fn palette(idx: Int) : Int {
+  if idx == 0 { 0x000a2eFF }
+  else if idx == 1  { 0x0a1a4eFF }
+  else if idx == 2  { 0x10307aFF }
+  else if idx == 3  { 0x1a4a9eFF }
+  else if idx == 4  { 0x2470b8FF }
+  else if idx == 5  { 0x36a0c8FF }
+  else if idx == 6  { 0x60c8c0FF }
+  else if idx == 7  { 0x90d8a8FF }
+  else if idx == 8  { 0xb8d088FF }
+  else if idx == 9  { 0xd8b860FF }
+  else if idx == 10 { 0xe8a040FF }
+  else if idx == 11 { 0xf28028FF }
+  else if idx == 12 { 0xf86018FF }
+  else if idx == 13 { 0xfc8c40FF }
+  else if idx == 14 { 0xfdc680FF }
+  else { 0xffffe0FF }
+}
+
+fn color_for(n: Int) : Int {
+  if n >= max_iter { 0x000000FF }
+  else {
+    # Map [0, max_iter) to [0, palette_stops). Integer floor.
+    let idx = (n * palette_stops) / max_iter
+    palette(idx)
+  }
+}
+
+# ----- render -----
+
+fn draw_buffer(buf: Array[Int]) : Unit / Ffi = draw_loop(buf, 0)
+
+fn draw_loop(buf: Array[Int], i: Int) : Unit / Ffi {
+  if i >= buf_len { () }
+  else {
+    let n = buf[i]
+    if n >= max_iter {
+      # Interior: skip — background already painted black.
+      draw_loop(buf, i + 1)
+    } else {
+      let cx = i % cw
+      let cy = i / cw
+      raylib.draw_rectangle(cx * px, cy * px, px, px, color_for(n))
+      draw_loop(buf, i + 1)
+    }
+  }
+}
+
+fn draw_hud(re_min: Real, re_max: Real,
+            im_min: Real, im_max: Real,
+            recomputing: Bool) : Unit / Ffi {
+  let col = 0xfdf9b9FF
+  raylib.draw_text("mandelbrot / kaikai + raylib", 10, 8, 14, col)
+  raylib.draw_text("arrows pan   +/- zoom   R reset   ESC quit",
+                   10, 580, 14, col)
+  if recomputing {
+    raylib.draw_text("computing...", 660, 8, 14, col)
+  } else {
+    raylib.draw_text(int_to_string(raylib.get_fps()), 750, 8, 14, col)
+  }
+}
+
+# ----- main loop -----
+#
+# State: re_min/max, im_min/max as vars; buf as the iter count
+# array. dirty flag means the next frame must recompute before
+# drawing.
+
+fn handle_input(
+  re_min: Array[Real], re_max: Array[Real],
+  im_min: Array[Real], im_max: Array[Real],
+  dirty: Array[Int]
+) : Unit / Ffi {
+  let span_re = re_max[0] - re_min[0]
+  let span_im = im_max[0] - im_min[0]
+
+  if raylib.is_key_pressed(key_left) {
+    let d = span_re * pan_step
+    re_min[0] := re_min[0] - d
+    re_max[0] := re_max[0] - d
+    dirty[0] := 1
+  } else { () }
+
+  if raylib.is_key_pressed(key_right) {
+    let d = span_re * pan_step
+    re_min[0] := re_min[0] + d
+    re_max[0] := re_max[0] + d
+    dirty[0] := 1
+  } else { () }
+
+  if raylib.is_key_pressed(key_up) {
+    let d = span_im * pan_step
+    im_min[0] := im_min[0] - d
+    im_max[0] := im_max[0] - d
+    dirty[0] := 1
+  } else { () }
+
+  if raylib.is_key_pressed(key_down) {
+    let d = span_im * pan_step
+    im_min[0] := im_min[0] + d
+    im_max[0] := im_max[0] + d
+    dirty[0] := 1
+  } else { () }
+
+  let zoom_in =
+    raylib.is_key_pressed(key_plus) or raylib.is_key_pressed(key_kp_plus)
+  if zoom_in {
+    # Shrink span around the centre.
+    let cre = (re_min[0] + re_max[0]) * 0.5
+    let cim = (im_min[0] + im_max[0]) * 0.5
+    let new_half_re = span_re * 0.5 * zoom_step
+    let new_half_im = span_im * 0.5 * zoom_step
+    re_min[0] := cre - new_half_re
+    re_max[0] := cre + new_half_re
+    im_min[0] := cim - new_half_im
+    im_max[0] := cim + new_half_im
+    dirty[0] := 1
+  } else { () }
+
+  let zoom_out =
+    raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_minus)
+  if zoom_out {
+    let cre = (re_min[0] + re_max[0]) * 0.5
+    let cim = (im_min[0] + im_max[0]) * 0.5
+    let new_half_re = span_re * 0.5 / zoom_step
+    let new_half_im = span_im * 0.5 / zoom_step
+    re_min[0] := cre - new_half_re
+    re_max[0] := cre + new_half_re
+    im_min[0] := cim - new_half_im
+    im_max[0] := cim + new_half_im
+    dirty[0] := 1
+  } else { () }
+
+  if raylib.is_key_pressed(key_r) {
+    re_min[0] := default_re_min
+    re_max[0] := default_re_max
+    im_min[0] := default_im_min
+    im_max[0] := default_im_max
+    dirty[0] := 1
+  } else { () }
+}
+
+fn frame_loop(
+  buf: Array[Int],
+  re_min: Array[Real], re_max: Array[Real],
+  im_min: Array[Real], im_max: Array[Real],
+  dirty: Array[Int]
+) : Unit / Ffi {
+  if raylib.window_should_close() { () }
+  else {
+    handle_input(re_min, re_max, im_min, im_max, dirty)
+
+    if dirty[0] != 0 {
+      # Repaint the "computing..." HUD before kicking the kernel
+      # so the user sees feedback during the (hopefully brief)
+      # recompute.
+      raylib.begin_drawing()
+      raylib.clear_background(col_bg)
+      draw_hud(re_min[0], re_max[0], im_min[0], im_max[0], true)
+      raylib.end_drawing()
+
+      compute(buf, re_min[0], re_max[0], im_min[0], im_max[0])
+      dirty[0] := 0
+    } else { () }
+
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_buffer(buf)
+    draw_hud(re_min[0], re_max[0], im_min[0], im_max[0], false)
+    raylib.end_drawing()
+
+    frame_loop(buf, re_min, re_max, im_min, im_max, dirty)
+  }
+}
+
+fn rcell(init: Real) : Array[Real] {
+  let a = array_make(1, 0.0)
+  a[0] := init
+  a
+}
+
+fn icell(init: Int) : Array[Int] {
+  let a = array_make(1, 0)
+  a[0] := init
+  a
+}
+
+fn main() : Unit / Ffi {
+  let buf = array_make(buf_len, 0)
+  let re_min = rcell(default_re_min)
+  let re_max = rcell(default_re_max)
+  let im_min = rcell(default_im_min)
+  let im_max = rcell(default_im_max)
+  let dirty = icell(1)   # compute on the first frame
+
+  raylib.init_window(800, 600, "Mandelbrot / kaikai + raylib")
+  raylib.set_target_fps(60)
+  frame_loop(buf, re_min, re_max, im_min, im_max, dirty)
+  raylib.close_window()
+}

@@ -1,0 +1,253 @@
+# Conway's Game of Life — kaikai + raylib
+#
+# 80x60 toroidal grid, ~10 generations/sec, classic gliders +
+# r-pentomino as the seed. Controls: SPACE pause, R reset, C
+# clear, ESC quit.
+
+import ffi.raylib
+
+# ----- constants -----
+
+const cols      : Int = 80
+const rows      : Int = 60
+const cell_size : Int = 10
+const grid_len  : Int = 4800   # cols * rows
+
+const key_space : Int = 32
+const key_r     : Int = 82
+const key_c     : Int = 67
+
+# Packed RGBA: 0xRRGGBBAA.
+const col_bg    : Int = 0x14141eFF
+const col_grid  : Int = 0x202030FF
+const col_alive : Int = 0x6cfff5FF   # mint cyan
+const col_text  : Int = 0xfdf9b9FF
+
+# ----- grid plumbing -----
+#
+# Two Array[Bool]s alternating roles (current, next). `which` is
+# 0 or 1 — when 0, grid_a is current and grid_b is next; when 1,
+# they swap. Saves a full array copy per step.
+
+fn idx(c: Int, r: Int) : Int = r * cols + c
+
+# Wrap a coord into [0, n).
+fn wrap(v: Int, n: Int) : Int {
+  if v < 0 { v + n }
+  else if v >= n { v - n }
+  else { v }
+}
+
+fn read_at(g: Array[Bool], c: Int, r: Int) : Bool =
+  g[idx(wrap(c, cols), wrap(r, rows))]
+
+# Count alive neighbours of (c, r) with toroidal wrap.
+# Eight reads, unrolled — avoids a list allocation per cell.
+fn b2i(b: Bool) : Int = if b { 1 } else { 0 }
+
+fn neighbours(g: Array[Bool], c: Int, r: Int) : Int =
+  b2i(read_at(g, c - 1, r - 1)) +
+  b2i(read_at(g, c,     r - 1)) +
+  b2i(read_at(g, c + 1, r - 1)) +
+  b2i(read_at(g, c - 1, r))     +
+  b2i(read_at(g, c + 1, r))     +
+  b2i(read_at(g, c - 1, r + 1)) +
+  b2i(read_at(g, c,     r + 1)) +
+  b2i(read_at(g, c + 1, r + 1))
+
+# Compute next state into `dst` from `src`.
+fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit {
+  step_loop(src, dst, 0)
+}
+
+fn step_loop(src: Array[Bool], dst: Array[Bool], r: Int) : Unit {
+  if r >= rows { () }
+  else {
+    step_row(src, dst, 0, r)
+    step_loop(src, dst, r + 1)
+  }
+}
+
+fn step_row(src: Array[Bool], dst: Array[Bool], c: Int, r: Int) : Unit {
+  if c >= cols { () }
+  else {
+    let alive = src[idx(c, r)]
+    let n = neighbours(src, c, r)
+    let next_alive =
+      if alive {
+        if n == 2 { true } else if n == 3 { true } else { false }
+      } else {
+        if n == 3 { true } else { false }
+      }
+    dst[idx(c, r)] := next_alive
+    step_row(src, dst, c + 1, r)
+  }
+}
+
+# ----- seeding -----
+
+fn clear_grid(g: Array[Bool]) : Unit = clear_loop(g, 0)
+fn clear_loop(g: Array[Bool], i: Int) : Unit {
+  if i >= grid_len { () }
+  else { g[i] := false; clear_loop(g, i + 1) }
+}
+
+# Set cell, ignoring if out of bounds (we always pass in-range here).
+fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit {
+  if c >= 0 and c < cols and r >= 0 and r < rows {
+    g[idx(c, r)] := true
+  } else { () }
+}
+
+# Stamp a pattern given as parallel offset lists (col_offset[i],
+# row_offset[i]) anchored at (c0, r0). Parallel lists avoid the
+# Pair type which lives in stdlib (we run with KAI_NO_STDLIB).
+fn stamp(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit =
+  stamp_loop(g, c0, r0, dcs, drs)
+
+fn stamp_loop(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit {
+  match dcs {
+    [] -> ()
+    [dc, ...rest_c] -> match drs {
+      [] -> ()
+      [dr, ...rest_r] -> {
+        set_alive(g, c0 + dc, r0 + dr)
+        stamp_loop(g, c0, r0, rest_c, rest_r)
+      }
+    }
+  }
+}
+
+# Seed the grid with several recognisable patterns. Picked for the
+# live demo: a few gliders flying across, an r-pentomino that
+# explodes into chaos, and a stable block as a reference point.
+fn seed(g: Array[Bool]) : Unit {
+  clear_grid(g)
+
+  # Glider, top-left, heading down-right
+  stamp(g, 2, 2,
+    [1, 2, 0, 1, 2],
+    [0, 1, 2, 2, 2])
+
+  # Another glider, mid-top
+  stamp(g, 40, 4,
+    [1, 2, 0, 1, 2],
+    [0, 1, 2, 2, 2])
+
+  # R-pentomino — chaotic for ~1100 generations
+  stamp(g, 38, 30,
+    [1, 2, 0, 1, 1],
+    [0, 0, 1, 1, 2])
+
+  # Horizontal blinker
+  stamp(g, 10, 50, [0, 1, 2], [0, 0, 0])
+
+  # Vertical blinker
+  stamp(g, 70, 12, [0, 0, 0], [0, 1, 2])
+
+  # Lightweight spaceship (LWSS)
+  stamp(g, 5, 35,
+    [1, 2, 3, 4, 0, 4, 4, 0, 3],
+    [0, 0, 0, 0, 1, 1, 2, 3, 3])
+}
+
+# ----- rendering -----
+
+fn draw_cells(g: Array[Bool]) : Unit / Ffi = draw_cells_loop(g, 0)
+
+fn draw_cells_loop(g: Array[Bool], i: Int) : Unit / Ffi {
+  if i >= grid_len { () }
+  else {
+    if g[i] {
+      let c = i % cols
+      let r = i / cols
+      raylib.draw_rectangle(c * cell_size, r * cell_size,
+                         cell_size - 1, cell_size - 1,
+                         col_alive)
+    } else { () }
+    draw_cells_loop(g, i + 1)
+  }
+}
+
+fn draw_hud(gen: Int, paused: Bool) : Unit / Ffi {
+  raylib.draw_text("conway / kaikai + raylib", 10, 8, 14, col_text)
+  raylib.draw_text("SPACE pause   R reset   C clear   ESC quit",
+                10, 580, 14, col_text)
+  let label = if paused { "PAUSED  gen " } else { "running gen " }
+  raylib.draw_text(label, 580, 8, 14, col_text)
+  raylib.draw_text(int_to_string(gen), 700, 8, 14, col_text)
+}
+
+# ----- main loop -----
+#
+# Frame counter advances every frame. When not paused, every
+# `step_every` frames we run a generation step and bump `gen`.
+
+const step_every : Int = 6   # 60 fps / 6 = 10 generations/sec
+
+# Choose which array is "current" given `which`.
+fn current(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
+  if which == 0 { a } else { b }
+
+fn other(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
+  if which == 0 { b } else { a }
+
+fn frame_loop(
+  a: Array[Bool], b: Array[Bool],
+  which: Int, gen: Int, frame: Int, paused: Bool
+) : Unit / Ffi {
+  if raylib.window_should_close() { () }
+  else {
+    # --- input ---
+    let toggle_pause = raylib.is_key_pressed(key_space)
+    let do_reset = raylib.is_key_pressed(key_r)
+    let do_clear = raylib.is_key_pressed(key_c)
+
+    # `paused` and `gen` may be updated; do it via vars locally
+    var paused_v = paused
+    var gen_v = gen
+    var which_v = which
+
+    if toggle_pause { paused_v := not @paused_v } else { () }
+
+    if do_reset {
+      seed(current(@which_v, a, b))
+      gen_v := 0
+    } else { () }
+
+    if do_clear {
+      clear_grid(current(@which_v, a, b))
+      gen_v := 0
+    } else { () }
+
+    # --- step ---
+    let advance = (not @paused_v) and (frame % step_every == 0)
+    if advance {
+      let cur = current(@which_v, a, b)
+      let nxt = other(@which_v, a, b)
+      step_into(cur, nxt)
+      which_v := 1 - @which_v
+      gen_v := @gen_v + 1
+    } else { () }
+
+    # --- draw ---
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_cells(current(@which_v, a, b))
+    draw_hud(@gen_v, @paused_v)
+    raylib.end_drawing()
+
+    frame_loop(a, b, @which_v, @gen_v, frame + 1, @paused_v)
+  }
+}
+
+fn main() : Unit / Ffi {
+  let a = array_make(grid_len, false)
+  let b = array_make(grid_len, false)
+  seed(a)
+
+  raylib.init_window(800, 600, "Conway / kaikai + raylib")
+  raylib.set_target_fps(60)
+  frame_loop(a, b, 0, 0, 0, false)
+  raylib.close_window()
+}
