@@ -1,42 +1,65 @@
-# Boids flocking — kaikai + raylib
+# Boids flocking — kaikai + raylib showcase
 #
 # 150 boids in 800x600 with classic Reynolds rules: separation,
 # alignment, cohesion. O(n²) is fine at this scale (~22500
-# pair-checks per frame, 60 fps). Controls: SPACE pause, R
-# randomize, ESC quit.
+# pair-checks per frame, 60 fps).
+#
+# The file is laid out in three layers so the flocking rules
+# read separately from the rendering and the per-frame plumbing:
+#
+#   1. ===== MODEL =====   Reynolds' three rules and per-boid
+#                          step. Pure functions: distances,
+#                          weighted accumulation, speed clamp.
+#                          Mutates the ref-cell accumulators
+#                          passed in (Mutable effect).
+#   2. ===== STATE =====   the parallel arrays (xs/ys/vxs/vys,
+#                          plus a `next_v` shadow), randomize
+#                          the seed, position-wrap helper.
+#   3. ===== VIEW  =====   raylib rendering. Boid as a triangle
+#                          rotated to match its velocity heading.
+#
+# Controls:
+#   SPACE   pausa / reanudar
+#   R       randomize positions
+#   ESC     salir
 
 import ffi.raylib
 import loop
 
-# ----- constants -----
+# ============================================================
+#  1. ===== MODEL ===============================================
+#
+#  Reynolds' rules: separation (push away from close neighbours),
+#  alignment (steer toward neighbours' average velocity), cohesion
+#  (steer toward neighbours' centre of mass). Each rule has its
+#  own neighbourhood radius and weight. The functions in this
+#  section are the rules of the simulation; STATE handles where
+#  the data lives.
+# ============================================================
 
 const count : Int = 150
 
-const width  : Real = 800.0
-const height : Real = 600.0
-
+# Neighbourhood radii (squared, so we compare d² and skip a sqrt).
 const r_sep_sq   : Real = 484.0    # 22^2 — separation
 const r_align_sq : Real = 2500.0   # 50^2 — alignment
 const r_coh_sq   : Real = 3600.0   # 60^2 — cohesion
 
+# Per-rule weights applied each step.
 const w_sep   : Real = 0.05
 const w_align : Real = 0.05
 const w_coh   : Real = 0.005
 
+# Velocity ceiling (pixels per frame).
 const max_speed : Real = 3.5
 
-const key_space : Int = 32
-const key_r     : Int = 82
-
-const col_bg   : Int = 0x0a0a14FF
-const col_boid : Int = 0xfdf9b9FF
-const col_text : Int = 0xfdf9b9FF
-
-# ----- helpers -----
+# ----- ref-cell helpers -----
 #
-# Single-element Array[Real]/Array[Int] as ref-cells: kaikai
-# arrays are by-reference, so a recursive scan can mutate them in
-# place without threading the accumulators through every call.
+# Single-element Array[T] as a ref cell: kaikai arrays are
+# by-reference, so a recursive scan can accumulate into them
+# without threading the running totals through every call. (We
+# keep this idiom rather than `Ref[T]` because the cells are
+# read intensively in the inner loop and `c[0]` is cheaper to
+# write than `Mutable.ref_get(c)` everywhere.)
 
 fn rcell() : Array[Real] = array_make(1, 0.0)
 fn icell() : Array[Int]  = array_make(1, 0)
@@ -44,26 +67,16 @@ fn icell() : Array[Int]  = array_make(1, 0)
 fn rclear(c: Array[Real]) : Unit / Mutable { c[0] := 0.0 }
 fn iclear(c: Array[Int])  : Unit / Mutable { c[0] := 0 }
 
+# Generic accumulate: works for Array[Real] + Real and Array[Int]
+# + Int. The `+` resolves at each instantiation (Real/Int).
 fn add[T](c: Array[T], v: T) : Unit / Mutable { c[0] := c[0] + v }
 
-# ----- state -----
-
-fn randomize(xs: Array[Real], ys: Array[Real],
-             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi + Mutable {
-  var i = 0
-  repeat(count) {
-    xs[@i] := int_to_real(raylib.get_random_value(0, 800))
-    ys[@i] := int_to_real(raylib.get_random_value(0, 600))
-    vxs[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    vys[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    i := @i + 1
-  }
-}
-
-# ----- scanning neighbours -----
+# ----- neighbour scan -----
 #
 # Walk all j != i, classify pair distance against each radius,
-# accumulate sep/ali/coh contributions into ref-cells.
+# accumulate sep/ali/coh contributions into the ref-cells passed
+# in. This is the inner loop of the simulation — at count=150
+# it runs ~22500 pair-checks per frame.
 
 fn scan_neighbours(
   i: Int, xi: Real, yi: Real,
@@ -81,19 +94,22 @@ fn scan_neighbours(
       let d2 = dx * dx + dy * dy
 
       if d2 < r_sep_sq and d2 > 0.0001 {
-        # Push away — weight by 1/d² so close neighbours dominate.
+        # Separation: push away — weight by 1/d² so close
+        # neighbours dominate.
         let inv = 1.0 / d2
         add(sep_x, dx * inv)
         add(sep_y, dy * inv)
       }
 
       if d2 < r_align_sq {
+        # Alignment: sum neighbours' velocities, average later.
         add(ali_x, vxs[@j])
         add(ali_y, vys[@j])
         add(n_ali, 1)
       }
 
       if d2 < r_coh_sq {
+        # Cohesion: sum neighbours' positions, average later.
         add(coh_x, xs[@j])
         add(coh_y, ys[@j])
         add(n_coh, 1)
@@ -104,16 +120,11 @@ fn scan_neighbours(
 }
 
 # ----- per-boid step -----
-
-fn wrap_pos(v: Real, max: Real) : Real {
-  if v < 0.0 { v + max }
-  else if v >= max { v - max }
-  else { v }
-}
-
-# Step boid i: read from (xs, ys, vxs, vys), write next velocity
-# to (out_vxs, out_vys). Position update happens after all
-# velocities are computed (in step_apply).
+#
+# Step boid i: read from (xs, ys, vxs, vys), write the next
+# velocity to (out_vxs, out_vys). Position update happens after
+# all velocities are computed (in apply_step) so neighbours see
+# the same frame.
 fn step_one(
   i: Int,
   xs: Array[Real], ys: Array[Real],
@@ -136,14 +147,15 @@ fn step_one(
                   sep_x, sep_y, ali_x, ali_y, n_ali,
                   coh_x, coh_y, n_coh)
 
-  let coh_dx = if n_coh[0] > 0 { (coh_x[0] / int_to_real(n_coh[0])) - xi } else { 0.0 }
-  let coh_dy = if n_coh[0] > 0 { (coh_y[0] / int_to_real(n_coh[0])) - yi } else { 0.0 }
+  let coh_dx = if n_coh[0] > 0 { (coh_x[0] / int_to_real(n_coh[0])) - xi }  else { 0.0 }
+  let coh_dy = if n_coh[0] > 0 { (coh_y[0] / int_to_real(n_coh[0])) - yi }  else { 0.0 }
   let ali_dx = if n_ali[0] > 0 { (ali_x[0] / int_to_real(n_ali[0])) - vxi } else { 0.0 }
   let ali_dy = if n_ali[0] > 0 { (ali_y[0] / int_to_real(n_ali[0])) - vyi } else { 0.0 }
 
   let new_vx = vxi + w_sep * sep_x[0] + w_align * ali_dx + w_coh * coh_dx
   let new_vy = vyi + w_sep * sep_y[0] + w_align * ali_dy + w_coh * coh_dy
 
+  # Speed clamp: scale velocity down to max_speed when above.
   let speed_sq = new_vx * new_vx + new_vy * new_vy
   let max_sq = max_speed * max_speed
   if speed_sq > max_sq {
@@ -155,6 +167,36 @@ fn step_one(
     out_vxs[i] := new_vx
     out_vys[i] := new_vy
   }
+}
+
+# ============================================================
+#  2. ===== STATE ===============================================
+#
+#  Parallel arrays for positions and velocities (xs / ys / vxs /
+#  vys) plus a shadow pair (next_vxs / next_vys) used as the
+#  write target for one full sweep. `randomize` plants the seed.
+# ============================================================
+
+const width  : Real = 800.0
+const height : Real = 600.0
+
+fn randomize(xs: Array[Real], ys: Array[Real],
+             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi + Mutable {
+  var i = 0
+  repeat(count) {
+    xs[@i] := int_to_real(raylib.get_random_value(0, 800))
+    ys[@i] := int_to_real(raylib.get_random_value(0, 600))
+    vxs[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    vys[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    i := @i + 1
+  }
+}
+
+# Wrap a coordinate around the screen torus.
+fn wrap_pos(v: Real, max: Real) : Real {
+  if v < 0.0 { v + max }
+  else if v >= max { v - max }
+  else { v }
 }
 
 # Run step_one for every boid into the `next_v` arrays.
@@ -192,11 +234,18 @@ fn apply_step(
   }
 }
 
-# ----- rendering -----
+# ============================================================
+#  3. ===== VIEW ================================================
 #
-# Triangle pointing along the velocity vector. The body is
-# computed in local frame (tip at +x), then rotated by the
-# velocity heading and translated to (x, y).
+#  raylib rendering. Each boid as a triangle pointing along its
+#  velocity vector — the body is built in a local frame (tip at
+#  +x, tail at -x/±y), rotated by the velocity heading, then
+#  translated to (x, y). Reads xs/ys/vxs/vys; never mutates.
+# ============================================================
+
+const col_bg   : Int = 0x0a0a14FF
+const col_boid : Int = 0xfdf9b9FF
+const col_text : Int = 0xfdf9b9FF
 
 fn boid_size() : Real = 7.0
 
@@ -210,7 +259,7 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
   let sz = boid_size()
 
   # Local triangle: tip at (sz, 0), tail corners at (-sz/2, ±sz/2).
-  let tip_lx = sz;      let tip_ly = 0.0
+  let tip_lx = sz;              let tip_ly = 0.0
   let l_lx  = 0.0 - (sz * 0.5); let l_ly = 0.0 - (sz * 0.6)
   let r_lx  = 0.0 - (sz * 0.5); let r_ly = sz * 0.6
 
@@ -221,8 +270,8 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
   let r_wx   = ct * r_lx   - st * r_ly   + x
   let r_wy   = st * r_lx   + ct * r_ly   + y
 
-  # raylib DrawTriangle expects clockwise winding; our (tip, left,
-  # right) order is clockwise in raylib's y-down screen.
+  # raylib DrawTriangle expects clockwise winding; our
+  # (tip, left, right) order is clockwise in raylib's y-down screen.
   raylib.draw_triangle(tip_wx, tip_wy, l_wx, l_wy, r_wx, r_wy, col_boid)
 }
 
@@ -244,7 +293,12 @@ fn draw_hud(paused: Bool) : Unit / Ffi {
   raylib.draw_text(int_to_string(raylib.get_fps()), 700, 8, 14, col_text)
 }
 
-# ----- main loop -----
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+# ============================================================
+
+const key_space : Int = 32
+const key_r     : Int = 82
 
 fn frame_loop(
   xs: Array[Real], ys: Array[Real],
@@ -254,19 +308,17 @@ fn frame_loop(
   var paused = false
 
   until { raylib.window_should_close() } {
-    if raylib.is_key_pressed(key_space) {
-      paused := not @paused
-    }
+    # ---- input ----
+    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_r)     { randomize(xs, ys, vxs, vys) }
 
-    if raylib.is_key_pressed(key_r) {
-      randomize(xs, ys, vxs, vys)
-    }
-
+    # ---- MODEL + STATE: tick the simulation ----
     if not @paused {
       step_velocities(xs, ys, vxs, vys, next_vxs, next_vys)
       apply_step(xs, ys, vxs, vys, next_vxs, next_vys)
     }
 
+    # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
     draw_all(xs, ys, vxs, vys)
@@ -275,7 +327,7 @@ fn frame_loop(
   }
 }
 
-fn main() : Unit / Ffi {
+fn main() : Unit / Ffi + Mutable {
   raylib.set_random_seed(42)
   let xs = array_make(count, 0.0)
   let ys = array_make(count, 0.0)

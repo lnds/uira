@@ -311,8 +311,8 @@ fn record_loop(spark: Array[Real], heads: Array[Int],
 fn spark_bounds(spark: Array[Real], i: Int,
                 out_min: Ref[Real], out_max: Ref[Real]) : Unit / Mutable = {
   let base = i * spark_len
-  Mutable.ref_set(out_min, spark[base])
-  Mutable.ref_set(out_max, spark[base])
+  out_min := spark[base]
+  out_max := spark[base]
   bounds_loop(spark, base, 1, out_min, out_max)
 }
 
@@ -322,8 +322,8 @@ fn bounds_loop(spark: Array[Real], base: Int, k: Int,
   else {
     let v = spark[base + k]
     if v != 0.0 {
-      if v < Mutable.ref_get(out_min) { Mutable.ref_set(out_min, v) } else { () }
-      if v > Mutable.ref_get(out_max) { Mutable.ref_set(out_max, v) } else { () }
+      if v < @out_min { out_min := v } else { () }
+      if v > @out_max { out_max := v } else { () }
     } else { () }
     bounds_loop(spark, base, k + 1, out_min, out_max)
   }
@@ -417,7 +417,7 @@ fn draw_sparkline(spark: Array[Real], heads: Array[Int],
   let lo = Mutable.ref_make(0.0)
   let hi = Mutable.ref_make(0.0)
   spark_bounds(spark, i, lo, hi)
-  let span = Mutable.ref_get(hi) - Mutable.ref_get(lo)
+  let span = @hi - @lo
   if span <= 0.000001 { () }
   else {
     spark_seg_loop(spark, heads, i, lo, span, y0, 0)
@@ -439,7 +439,7 @@ fn spark_seg_loop(spark: Array[Real], heads: Array[Int],
     let v1 = spark[base + off1]
     let v2 = spark[base + off2]
     if v1 != 0.0 and v2 != 0.0 {
-      let lo_v = Mutable.ref_get(lo)
+      let lo_v = @lo
       let x1 = spark_x + k * spark_w / (spark_len - 1)
       let x2 = spark_x + (k + 1) * spark_w / (spark_len - 1)
       let y1 = y0 + spark_y_h - real_to_int((v1 - lo_v) / span * int_to_real(spark_y_h))
@@ -525,13 +525,13 @@ fn frame_loop(assets: Array[Asset],
     if raylib.is_key_pressed(key_space) { paused := not @paused }
     if raylib.is_key_pressed(key_r) {
       reset_prices(basis, prices)
-      Mutable.ref_set(tick_count, 0)
+      tick_count := 0
     } else { () }
 
     # ---- STATE: tick the simulation ----
     if not @paused {
-      let t = Mutable.ref_get(tick_count) + 1
-      Mutable.ref_set(tick_count, t)
+      let t = @tick_count + 1
+      tick_count := t
       if t % tick_period == 0 {
         step_all(assets, prices)
         record_all(spark, spark_heads, prices)
