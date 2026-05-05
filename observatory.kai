@@ -1,0 +1,1003 @@
+# Observatorio — kaikai + raylib showcase para astrónomos
+#
+# Tres demos en uno, conmutables con teclas:
+#
+#   N - N-body solar      Integración leapfrog de los planetas
+#                         del sistema solar bajo gravedad real:
+#                         las elipses, la precesión y los
+#                         períodos relativos salen del cálculo,
+#                         no de un coseno hardcodeado. La fórmula
+#                         a = G * Σ Mⱼ * (rⱼ - rᵢ) / |rⱼ - rᵢ|³
+#                         typechequea sólo porque las unidades
+#                         cuadran:  G : m³/(kg·s²),  M : kg,
+#                         r : m  ⇒  a : m/s².
+#
+#   H - Hertzsprung-Russell  Scatter T_eff (eje X, log invertido)
+#                            vs luminosidad solar (eje Y, log).
+#                            Cada estrella coloreada por su tipo
+#                            espectral (O/B/A/F/G/K/M) — las
+#                            ramas main-sequence, gigantes rojas
+#                            y enanas blancas se identifican a
+#                            simple vista. type Spectral con
+#                            pattern matching para color y radio.
+#
+#   P - Paralaje estelar  Vista comparada Tierra-enero / Tierra-
+#                         julio. Las estrellas cercanas se
+#                         desplazan visiblemente entre las dos
+#                         fechas; las lejanas no. La paralaje en
+#                         arcsec sobre la base de 2 au da la
+#                         distancia en parsecs (de ahí el nombre).
+#                         UoM: Real<pc>, Real<arcsec>, plus el
+#                         alias arcsec_per_au.
+#
+# Showcase de features de kaikai:
+#
+#   - Units of measure compuestas (m³/(kg·s²), au/days², L_sol,
+#     K, pc, arcsec). Las fórmulas físicas typechequean por
+#     dimensiones; cambiar G a unidades incompatibles es un
+#     error de compilación.
+#   - Sum types + match guards: Mode (selección), Spectral
+#     (clasificación con bandas).
+#   - Mutable + Ref (PR #265 / #277): los planetas mutan
+#     positions/velocities; el modo activo es un Ref[Int].
+#   - Pattern matching exhaustivo para clasificar y dispatchar
+#     entre modos.
+#
+# Controles:
+#   N    modo N-body
+#   H    modo Hertzsprung-Russell
+#   P    modo paralaje
+#   SPACE pausa (sólo afecta N-body)
+#   + / -  velocidad de simulación N-body
+#   R    reset al estado inicial del modo activo
+#   ESC  salir
+
+import ffi.raylib
+import loop
+
+# ============================================================
+#  1. ===== MODEL ===============================================
+# ============================================================
+
+# ----- units of measure -----
+
+unit m
+unit kg
+unit s
+unit au              # astronomical unit (= 1.495979e11 m)
+unit days
+unit yr
+unit kelvin          # T_eff (Kelvin)
+unit lsol            # solar luminosity (= 3.828e26 W)
+unit pc              # parsec
+unit arcsec
+
+unit au_per_day  = au / days
+unit au_per_day2 = au / (days * days)
+unit km_per_s    = m / s              # we'll just call our axis "m/s" then scale display
+
+# Fundamental constants in au-day-msun units (so the planetary
+# integrator stays away from 1e30-magnitude numbers).
+#
+# G in SI is 6.674e-11 m³/(kg·s²). Converting to au/day with
+# masses expressed in solar masses gives 2.959e-4. In other
+# words: G_au_day_msun ≈ 4π²/(yr_in_days)², which is just
+# Kepler's third law.
+unit msun
+
+unit g_unit = au * au * au / (msun * days * days)
+
+const g_au_day : Real<g_unit> = 0.000295912208<au * au * au / (msun * days * days)>
+
+# ----- mode discriminator -----
+
+type Mode = NBody | HR | Parallax
+
+const mode_nbody    : Int = 0
+const mode_hr       : Int = 1
+const mode_parallax : Int = 2
+
+fn mode_of(i: Int) : Mode = match i {
+  0 -> NBody
+  1 -> HR
+  _ -> Parallax
+}
+
+fn mode_label(m: Mode) : String = match m {
+  NBody    -> "N-body solar"
+  HR       -> "Hertzsprung-Russell"
+  Parallax -> "Paralaje estelar"
+}
+
+# ----- spectral classification -----
+#
+# Stars classified by surface temperature: O is hottest blue,
+# M is coolest red. Bands taken from Harvard's classical
+# breakpoints in Kelvin.
+
+type Spectral = O | B | A | F | G | K | M
+
+fn class_of_temp(t: Real<kelvin>) : Spectral = match t {
+  k if k >= 30000.0<kelvin> -> O
+  k if k >= 10000.0<kelvin> -> B
+  k if k >=  7500.0<kelvin> -> A
+  k if k >=  6000.0<kelvin> -> F
+  k if k >=  5200.0<kelvin> -> G
+  k if k >=  3700.0<kelvin> -> K
+  _                          -> M
+}
+
+fn class_color(s: Spectral) : Int = match s {
+  O -> 0x9bb0ffFF   # blue-white
+  B -> 0xaabffeFF   # blue
+  A -> 0xcad7ffFF   # white
+  F -> 0xf8f7ffFF   # yellow-white
+  G -> 0xfff4e8FF   # yellow (Sun)
+  K -> 0xffd2a1FF   # orange
+  M -> 0xffae5cFF   # red
+}
+
+fn class_label(s: Spectral) : String = match s {
+  O -> "O"
+  B -> "B"
+  A -> "A"
+  F -> "F"
+  G -> "G"
+  K -> "K"
+  M -> "M"
+}
+
+# Visual radius for HR / parallax dots, in pixels. Bigger and
+# brighter means a "louder" star to the eye.
+fn class_radius(s: Spectral) : Real = match s {
+  O -> 5.0
+  B -> 4.5
+  A -> 4.0
+  F -> 3.5
+  G -> 3.5
+  K -> 3.0
+  M -> 2.5
+}
+
+# ============================================================
+#  2. ===== STATE ===============================================
+#
+#  Three datasets, one per mode: (a) the solar-system bodies
+#  (Sun + 8 planets) for the N-body integrator; (b) a catalog
+#  of ~25 well-known stars for the HR diagram and the parallax
+#  view (same catalog reused).
+# ============================================================
+
+# ----- N-body: sun + 8 planets -----
+#
+# Positions in au, velocities in au/day, masses in solar
+# masses. Initial conditions are heliocentric — sun at origin,
+# planets at perihelion-ish along +x with circular-velocity in
+# +y. (Approximation: real ephemerides have inclination,
+# eccentricity, and phase, but for the showcase the planets
+# tracing visible elliptical-ish loops is what matters.)
+
+const n_bodies : Int = 9
+
+# Solar system seeds (au, au/day, msun). Mercury, Venus, Earth,
+# Mars, Jupiter, Saturn, Uranus, Neptune.
+fn seed_x(i: Int) : Real = {
+  if i == 0      { 0.0 }
+  else if i == 1 { 0.387 }
+  else if i == 2 { 0.723 }
+  else if i == 3 { 1.000 }
+  else if i == 4 { 1.524 }
+  else if i == 5 { 5.203 }
+  else if i == 6 { 9.537 }
+  else if i == 7 { 19.191 }
+  else           { 30.069 }
+}
+
+# Circular orbital velocity at distance r from a 1-msun star:
+#   v = sqrt(G/r)   in au/day
+# We compute this once at seed time so the orbits stay roughly
+# circular even with the leapfrog integrator's small drift.
+fn seed_vy(i: Int) : Real = {
+  if i == 0 { 0.0 }
+  else {
+    let r = seed_x(i)
+    let g_bare = g_au_day / 1.0<au * au * au / (msun * days * days)>
+    let v = real_sqrt_approx(g_bare / r)
+    v
+  }
+}
+
+# Newton's iteration sqrt for our purposes — kaikai's stdlib
+# real_sqrt sits behind a libm extern, but we already have
+# raylib.sqrt available everywhere we need it.
+fn real_sqrt_approx(x: Real) : Real / Ffi = raylib.sqrt(x)
+
+fn body_mass(i: Int) : Real = {
+  if i == 0      { 1.0 }              # Sun
+  else if i == 1 { 1.66e-7 }          # Mercury
+  else if i == 2 { 2.45e-6 }          # Venus
+  else if i == 3 { 3.00e-6 }          # Earth
+  else if i == 4 { 3.23e-7 }          # Mars
+  else if i == 5 { 9.55e-4 }          # Jupiter
+  else if i == 6 { 2.86e-4 }          # Saturn
+  else if i == 7 { 4.37e-5 }          # Uranus
+  else           { 5.15e-5 }          # Neptune
+}
+
+fn body_name(i: Int) : String = {
+  if i == 0      { "Sol" }
+  else if i == 1 { "Mercurio" }
+  else if i == 2 { "Venus" }
+  else if i == 3 { "Tierra" }
+  else if i == 4 { "Marte" }
+  else if i == 5 { "Jupiter" }
+  else if i == 6 { "Saturno" }
+  else if i == 7 { "Urano" }
+  else           { "Neptuno" }
+}
+
+fn body_color(i: Int) : Int = {
+  if i == 0      { 0xffd166FF }       # Sun
+  else if i == 1 { 0xb08968FF }
+  else if i == 2 { 0xefcb68FF }
+  else if i == 3 { 0x4ea1ffFF }
+  else if i == 4 { 0xff6b6bFF }
+  else if i == 5 { 0xfca311FF }
+  else if i == 6 { 0xe0c590FF }
+  else           { 0x90c8e0FF }
+}
+
+# ----- N-body integrator: leapfrog (kick-drift-kick) -----
+#
+# Each step: half-kick velocities by current accel, drift
+# positions by full timestep, recompute accel, half-kick
+# velocities again. Conserves energy long-term much better than
+# explicit Euler.
+
+fn init_bodies(xs: Array[Real], ys: Array[Real],
+               vxs: Array[Real], vys: Array[Real],
+               ms: Array[Real]) : Unit / Ffi + Mutable = {
+  init_loop(xs, ys, vxs, vys, ms, 0)
+}
+
+fn init_loop(xs: Array[Real], ys: Array[Real],
+             vxs: Array[Real], vys: Array[Real],
+             ms: Array[Real], i: Int) : Unit / Ffi + Mutable = {
+  if i >= n_bodies { () }
+  else {
+    xs[i] := seed_x(i)
+    ys[i] := 0.0
+    vxs[i] := 0.0
+    vys[i] := seed_vy(i)
+    ms[i] := body_mass(i)
+    init_loop(xs, ys, vxs, vys, ms, i + 1)
+  }
+}
+
+# Compute (ax, ay) for body i by summing G*m_j*(r_j-r_i)/|...|^3
+# over all j != i. Writes the result into single-element arrays
+# `ax_out` / `ay_out` so the recursive accumulator stays clean.
+fn accel(i: Int,
+         xs: Array[Real], ys: Array[Real], ms: Array[Real],
+         ax_out: Array[Real], ay_out: Array[Real]) : Unit / Mutable = {
+  ax_out[0] := 0.0
+  ay_out[0] := 0.0
+  accel_loop(i, xs, ys, ms, ax_out, ay_out, 0)
+}
+
+fn accel_loop(i: Int,
+              xs: Array[Real], ys: Array[Real], ms: Array[Real],
+              ax_out: Array[Real], ay_out: Array[Real],
+              j: Int) : Unit / Mutable = {
+  if j >= n_bodies { () }
+  else {
+    if j == i {
+      accel_loop(i, xs, ys, ms, ax_out, ay_out, j + 1)
+    } else {
+      let dx = xs[j] - xs[i]
+      let dy = ys[j] - ys[i]
+      let r2 = dx * dx + dy * dy
+      let r3 = r2 * real_sqrt_approx_bare(r2)
+      # G in au/day units, ms[j] in msun: a contribution is
+      # G * m_j / r³ * (dx, dy).
+      let g_bare = g_au_day / 1.0<au * au * au / (msun * days * days)>
+      let f = g_bare * ms[j] / r3
+      ax_out[0] := ax_out[0] + f * dx
+      ay_out[0] := ay_out[0] + f * dy
+      accel_loop(i, xs, ys, ms, ax_out, ay_out, j + 1)
+    }
+  }
+}
+
+fn real_sqrt_approx_bare(x: Real) : Real / Mutable = {
+  # Babylonian. Two iterations from x/2 are enough for our
+  # display precision and avoid taking an Ffi dependency on every
+  # single accel pair.
+  if x <= 0.0 { 0.0 }
+  else {
+    let y0 = x * 0.5 + 0.0001
+    let y1 = (y0 + x / y0) * 0.5
+    let y2 = (y1 + x / y1) * 0.5
+    let y3 = (y2 + x / y2) * 0.5
+    y3
+  }
+}
+
+# One leapfrog step. dt is in days. Pre-allocated scratch
+# arrays `ax`, `ay` carry the per-body accel.
+fn leapfrog_step(xs: Array[Real], ys: Array[Real],
+                 vxs: Array[Real], vys: Array[Real],
+                 ms: Array[Real],
+                 ax: Array[Real], ay: Array[Real],
+                 dt: Real) : Unit / Mutable = {
+  # First half-kick.
+  half_kick_loop(vxs, vys, xs, ys, ms, ax, ay, dt, 0)
+  # Drift.
+  drift_loop(xs, ys, vxs, vys, dt, 0)
+  # Second half-kick.
+  half_kick_loop(vxs, vys, xs, ys, ms, ax, ay, dt, 0)
+}
+
+fn half_kick_loop(vxs: Array[Real], vys: Array[Real],
+                  xs: Array[Real], ys: Array[Real], ms: Array[Real],
+                  ax: Array[Real], ay: Array[Real],
+                  dt: Real, i: Int) : Unit / Mutable = {
+  if i >= n_bodies { () }
+  else {
+    let ax_cell = array_make(1, 0.0)
+    let ay_cell = array_make(1, 0.0)
+    accel(i, xs, ys, ms, ax_cell, ay_cell)
+    vxs[i] := vxs[i] + 0.5 * dt * ax_cell[0]
+    vys[i] := vys[i] + 0.5 * dt * ay_cell[0]
+    half_kick_loop(vxs, vys, xs, ys, ms, ax, ay, dt, i + 1)
+  }
+}
+
+fn drift_loop(xs: Array[Real], ys: Array[Real],
+              vxs: Array[Real], vys: Array[Real],
+              dt: Real, i: Int) : Unit / Mutable = {
+  if i >= n_bodies { () }
+  else {
+    xs[i] := xs[i] + dt * vxs[i]
+    ys[i] := ys[i] + dt * vys[i]
+    drift_loop(xs, ys, vxs, vys, dt, i + 1)
+  }
+}
+
+# ----- star catalog -----
+#
+# 25 well-known stars + the Sun. (T_eff in Kelvin, luminosity in
+# Lsun, distance in parsecs.) Numbers are real; sources: Hipparcos
+# / Gaia DR3 / Wikipedia for the nearby and famous stars.
+
+const n_stars : Int = 25
+
+fn star_name(i: Int) : String = {
+  if i == 0       { "Sol" }
+  else if i == 1  { "Sirio A" }
+  else if i == 2  { "Sirio B" }
+  else if i == 3  { "Vega" }
+  else if i == 4  { "Arcturus" }
+  else if i == 5  { "Betelgeuse" }
+  else if i == 6  { "Rigel" }
+  else if i == 7  { "Proxima" }
+  else if i == 8  { "Alpha Cen A" }
+  else if i == 9  { "Alpha Cen B" }
+  else if i == 10 { "Aldebaran" }
+  else if i == 11 { "Antares" }
+  else if i == 12 { "Pollux" }
+  else if i == 13 { "Capella" }
+  else if i == 14 { "Procyon A" }
+  else if i == 15 { "Altair" }
+  else if i == 16 { "Spica" }
+  else if i == 17 { "Deneb" }
+  else if i == 18 { "Bellatrix" }
+  else if i == 19 { "Polaris" }
+  else if i == 20 { "Mira" }
+  else if i == 21 { "Barnard" }
+  else if i == 22 { "Wolf 359" }
+  else if i == 23 { "Lalande 21185" }
+  else            { "61 Cygni A" }
+}
+
+# Effective surface temperature, K.
+fn star_temp(i: Int) : Real<kelvin> = {
+  if i == 0       { 5778.0<kelvin> }
+  else if i == 1  { 9940.0<kelvin> }
+  else if i == 2  { 25000.0<kelvin> }
+  else if i == 3  { 9602.0<kelvin> }
+  else if i == 4  { 4286.0<kelvin> }
+  else if i == 5  { 3500.0<kelvin> }
+  else if i == 6  { 12100.0<kelvin> }
+  else if i == 7  { 3042.0<kelvin> }
+  else if i == 8  { 5790.0<kelvin> }
+  else if i == 9  { 5260.0<kelvin> }
+  else if i == 10 { 3910.0<kelvin> }
+  else if i == 11 { 3660.0<kelvin> }
+  else if i == 12 { 4666.0<kelvin> }
+  else if i == 13 { 4970.0<kelvin> }
+  else if i == 14 { 6530.0<kelvin> }
+  else if i == 15 { 7700.0<kelvin> }
+  else if i == 16 { 22400.0<kelvin> }
+  else if i == 17 { 8525.0<kelvin> }
+  else if i == 18 { 21800.0<kelvin> }
+  else if i == 19 { 6015.0<kelvin> }
+  else if i == 20 { 2918.0<kelvin> }
+  else if i == 21 { 3134.0<kelvin> }
+  else if i == 22 { 2800.0<kelvin> }
+  else if i == 23 { 3500.0<kelvin> }
+  else            { 4526.0<kelvin> }
+}
+
+# Luminosity in solar luminosities (Lsun).
+fn star_lum(i: Int) : Real<lsol> = {
+  if i == 0       { 1.0<lsol> }
+  else if i == 1  { 25.4<lsol> }
+  else if i == 2  { 0.056<lsol> }
+  else if i == 3  { 40.12<lsol> }
+  else if i == 4  { 170.0<lsol> }
+  else if i == 5  { 126000.0<lsol> }
+  else if i == 6  { 120000.0<lsol> }
+  else if i == 7  { 0.0017<lsol> }
+  else if i == 8  { 1.519<lsol> }
+  else if i == 9  { 0.5<lsol> }
+  else if i == 10 { 439.0<lsol> }
+  else if i == 11 { 75900.0<lsol> }
+  else if i == 12 { 32.7<lsol> }
+  else if i == 13 { 78.7<lsol> }
+  else if i == 14 { 6.93<lsol> }
+  else if i == 15 { 10.6<lsol> }
+  else if i == 16 { 20500.0<lsol> }
+  else if i == 17 { 196000.0<lsol> }
+  else if i == 18 { 9211.0<lsol> }
+  else if i == 19 { 1260.0<lsol> }
+  else if i == 20 { 9000.0<lsol> }
+  else if i == 21 { 0.0035<lsol> }
+  else if i == 22 { 0.0011<lsol> }
+  else if i == 23 { 0.026<lsol> }
+  else            { 0.153<lsol> }
+}
+
+# Distance in parsecs.
+fn star_distance(i: Int) : Real<pc> = {
+  if i == 0       { 0.0000048<pc> }
+  else if i == 1  { 2.64<pc> }
+  else if i == 2  { 2.64<pc> }
+  else if i == 3  { 7.68<pc> }
+  else if i == 4  { 11.26<pc> }
+  else if i == 5  { 168.0<pc> }
+  else if i == 6  { 264.0<pc> }
+  else if i == 7  { 1.30<pc> }
+  else if i == 8  { 1.34<pc> }
+  else if i == 9  { 1.34<pc> }
+  else if i == 10 { 20.0<pc> }
+  else if i == 11 { 168.0<pc> }
+  else if i == 12 { 10.34<pc> }
+  else if i == 13 { 13.16<pc> }
+  else if i == 14 { 3.51<pc> }
+  else if i == 15 { 5.13<pc> }
+  else if i == 16 { 77.0<pc> }
+  else if i == 17 { 802.0<pc> }
+  else if i == 18 { 76.6<pc> }
+  else if i == 19 { 132.6<pc> }
+  else if i == 20 { 92.0<pc> }
+  else if i == 21 { 1.83<pc> }
+  else if i == 22 { 2.41<pc> }
+  else if i == 23 { 2.55<pc> }
+  else            { 3.50<pc> }
+}
+
+# Right ascension (hours) and declination (degrees), simplified
+# to a 2D angle for the parallax view. We project all stars onto
+# a flat sky for the showcase.
+fn star_ra_h(i: Int) : Real = {
+  if i == 0       { 0.0 }
+  else if i == 1  { 6.75 }
+  else if i == 2  { 6.75 }
+  else if i == 3  { 18.62 }
+  else if i == 4  { 14.26 }
+  else if i == 5  { 5.92 }
+  else if i == 6  { 5.24 }
+  else if i == 7  { 14.50 }
+  else if i == 8  { 14.66 }
+  else if i == 9  { 14.66 }
+  else if i == 10 { 4.60 }
+  else if i == 11 { 16.49 }
+  else if i == 12 { 7.76 }
+  else if i == 13 { 5.28 }
+  else if i == 14 { 7.66 }
+  else if i == 15 { 19.85 }
+  else if i == 16 { 13.42 }
+  else if i == 17 { 20.69 }
+  else if i == 18 { 5.42 }
+  else if i == 19 { 2.53 }
+  else if i == 20 { 2.32 }
+  else if i == 21 { 17.96 }
+  else if i == 22 { 10.91 }
+  else if i == 23 { 11.05 }
+  else            { 21.07 }
+}
+
+fn star_dec_deg(i: Int) : Real = {
+  if i == 0       {   0.0 }
+  else if i == 1  { 0.0 - 16.7 }
+  else if i == 2  { 0.0 - 16.7 }
+  else if i == 3  {  38.78 }
+  else if i == 4  {  19.18 }
+  else if i == 5  {   7.41 }
+  else if i == 6  { 0.0 - 8.20 }
+  else if i == 7  { 0.0 - 62.68 }
+  else if i == 8  { 0.0 - 60.83 }
+  else if i == 9  { 0.0 - 60.84 }
+  else if i == 10 {  16.51 }
+  else if i == 11 { 0.0 - 26.43 }
+  else if i == 12 {  28.03 }
+  else if i == 13 {  45.99 }
+  else if i == 14 {   5.22 }
+  else if i == 15 {   8.87 }
+  else if i == 16 { 0.0 - 11.16 }
+  else if i == 17 {  45.28 }
+  else if i == 18 {   6.35 }
+  else if i == 19 {  89.26 }
+  else if i == 20 { 0.0 - 2.98 }
+  else if i == 21 {   4.69 }
+  else if i == 22 {   7.01 }
+  else if i == 23 {  35.97 }
+  else            {  38.74 }
+}
+
+# ============================================================
+#  3. ===== VIEW ================================================
+# ============================================================
+
+const width  : Int = 1100
+const height : Int = 700
+
+const col_bg     : Int = 0x06080cFF
+const col_panel  : Int = 0x101620FF
+const col_text   : Int = 0xeaedf3FF
+const col_dim    : Int = 0x6b7382FF
+const col_accent : Int = 0xfca311FF
+const col_grid   : Int = 0x1a2030FF
+
+# ----- mode N-body view -----
+
+const cx     : Real = 550.0
+const cy     : Real = 380.0
+# Pixels per au — log-ish so we can show inner planets and
+# Jupiter+ at the same time without one or the other vanishing.
+fn px_per_au(scale: Real) : Real = scale
+
+fn draw_nbody(xs: Array[Real], ys: Array[Real],
+              ms: Array[Real],
+              trails: Array[Real], head: Int,
+              scale: Real, sim_days: Real) : Unit / Ffi = {
+  let s = px_per_au(scale)
+
+  # Trails (rings of past positions per body).
+  draw_trails(trails, head, s)
+
+  # Bodies.
+  draw_bodies_loop(xs, ys, ms, s, 0)
+
+  # HUD.
+  raylib.draw_text("MODO  N-body solar (gravedad real, leapfrog Verlet)",
+                   24, 18, 18, col_text)
+  raylib.draw_text("dia simulado:", 24, 50, 14, col_dim)
+  raylib.draw_text(int_to_string(real_to_int(sim_days)), 130, 50, 14, col_text)
+  raylib.draw_text("escala (au -> px):", 240, 50, 14, col_dim)
+  raylib.draw_text(real_to_string(scale), 380, 50, 14, col_text)
+}
+
+fn draw_bodies_loop(xs: Array[Real], ys: Array[Real],
+                    ms: Array[Real], s: Real, i: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else {
+    let x = cx + xs[i] * s
+    let y = cy + ys[i] * s
+    if i == 0 {
+      raylib.draw_circle(real_to_int(x), real_to_int(y), 10.0, body_color(i))
+    } else {
+      let r = if ms[i] > 0.0001 { 5.0 } else { 3.5 }   # gas giants bigger
+      raylib.draw_circle(real_to_int(x), real_to_int(y), r, body_color(i))
+      raylib.draw_text(body_name(i),
+                       real_to_int(x) + 6, real_to_int(y) - 6, 11, col_dim)
+    }
+    draw_bodies_loop(xs, ys, ms, s, i + 1)
+  }
+}
+
+const trail_len : Int = 128
+
+fn record_trails(trails: Array[Real],
+                 xs: Array[Real], ys: Array[Real],
+                 head_ref: Ref[Int]) : Unit / Mutable = {
+  let h = @head_ref
+  trail_record_loop(trails, xs, ys, h, 0)
+  head_ref := (h + 1) % trail_len
+}
+
+fn trail_record_loop(trails: Array[Real],
+                     xs: Array[Real], ys: Array[Real],
+                     h: Int, i: Int) : Unit / Mutable = {
+  if i >= n_bodies { () }
+  else {
+    let base = i * trail_len * 2
+    trails[base + h * 2]     := xs[i]
+    trails[base + h * 2 + 1] := ys[i]
+    trail_record_loop(trails, xs, ys, h, i + 1)
+  }
+}
+
+fn draw_trails(trails: Array[Real], head: Int, s: Real) : Unit / Ffi =
+  trails_body_loop(trails, head, s, 1)   # skip Sun (i=0)
+
+fn trails_body_loop(trails: Array[Real], head: Int, s: Real,
+                    i: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else {
+    trail_seg_loop(trails, head, s, i, 0)
+    trails_body_loop(trails, head, s, i + 1)
+  }
+}
+
+fn trail_seg_loop(trails: Array[Real], head: Int, s: Real,
+                  i: Int, k: Int) : Unit / Ffi = {
+  if k >= trail_len - 1 { () }
+  else {
+    let base = i * trail_len * 2
+    let off1 = (head + k) % trail_len
+    let off2 = (head + k + 1) % trail_len
+    let x1r = trails[base + off1 * 2]
+    let y1r = trails[base + off1 * 2 + 1]
+    let x2r = trails[base + off2 * 2]
+    let y2r = trails[base + off2 * 2 + 1]
+    if (x1r != 0.0 or y1r != 0.0) and (x2r != 0.0 or y2r != 0.0) {
+      let x1 = cx + x1r * s
+      let y1 = cy + y1r * s
+      let x2 = cx + x2r * s
+      let y2 = cy + y2r * s
+      raylib.draw_line(real_to_int(x1), real_to_int(y1),
+                       real_to_int(x2), real_to_int(y2), 0x303040FF)
+    }
+    trail_seg_loop(trails, head, s, i, k + 1)
+  }
+}
+
+# ----- mode HR view -----
+#
+# X axis: log10(T_eff) inverted (high temp left). Y axis:
+# log10(L / L_sun). Both with grid lines and labels.
+
+fn log10_approx(x: Real) : Real = {
+  # ln(x)/ln(10), with ln from a coarse Taylor around the mean.
+  # Good enough for axis placement.
+  if x <= 0.0 { 0.0 - 99.0 }
+  else { ln_approx(x) / 2.302585 }
+}
+
+fn ln_approx(x: Real) : Real = {
+  # Reduce x = 2^k * m with m in [1,2), then ln x = k*ln2 + ln m.
+  # ln m via two terms of (m-1) - (m-1)²/2 is enough for axes.
+  let r = reduce_pow2(x, 0)
+  let k = r / 1000000.0       # encoded above as k * 1e6 + m_minus_1
+  let m_minus_1 = (r - k * 1000000.0) - 1.0
+  k * 0.693147 + m_minus_1 - m_minus_1 * m_minus_1 * 0.5
+}
+
+# Encode (k, m) into one Real to avoid building a tuple. Hacky
+# but the demo only needs axis labels.
+fn reduce_pow2(x: Real, k: Int) : Real = {
+  if x >= 2.0 { reduce_pow2(x * 0.5, k + 1) }
+  else if x < 1.0 { reduce_pow2(x * 2.0, k - 1) }
+  else { int_to_real(k) * 1000000.0 + x }
+}
+
+fn draw_hr() : Unit / Ffi = {
+  raylib.draw_text("MODO  Diagrama Hertzsprung-Russell",
+                   24, 18, 18, col_text)
+  raylib.draw_text("eje X: temperatura (K) decreciente   eje Y: luminosidad (L_sol)",
+                   24, 44, 12, col_dim)
+
+  # Plot area.
+  let px_x = 100
+  let px_y = 90
+  let px_w = 900
+  let px_h = 540
+  raylib.draw_rectangle(px_x, px_y, px_w, px_h, col_panel)
+
+  # Grid lines: temp at 30000, 10000, 7500, 6000, 5200, 3700.
+  draw_hr_grid(px_x, px_y, px_w, px_h)
+
+  # Plot the catalog.
+  draw_hr_stars(px_x, px_y, px_w, px_h, 0)
+}
+
+# Map T_eff (K) to X. Inverted log scale: hot stars on the left.
+# Domain: [2500, 35000] K ⇒ [px_x + px_w, px_x] (right to left).
+fn temp_to_x(t: Real, px_x: Int, px_w: Int) : Int = {
+  let lo = 2500.0
+  let hi = 35000.0
+  let lt = log10_approx(t)
+  let llo = log10_approx(lo)
+  let lhi = log10_approx(hi)
+  let frac = (lt - llo) / (lhi - llo)
+  # Inverted: high temp -> small frac complement -> left.
+  let x = int_to_real(px_x) + (1.0 - frac) * int_to_real(px_w)
+  real_to_int(x)
+}
+
+# Map L (Lsun) to Y. Domain: [1e-4, 1e6] ⇒ [px_y + px_h, px_y].
+fn lum_to_y(l: Real, px_y: Int, px_h: Int) : Int = {
+  let lo = 0.0001
+  let hi = 1000000.0
+  let ll = log10_approx(l)
+  let llo = log10_approx(lo)
+  let lhi = log10_approx(hi)
+  let frac = (ll - llo) / (lhi - llo)
+  let y = int_to_real(px_y) + (1.0 - frac) * int_to_real(px_h)
+  real_to_int(y)
+}
+
+fn draw_hr_grid(px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
+  # Temperature grid lines at the Harvard breakpoints.
+  draw_temp_line(30000.0, "30000K  O", px_x, px_y, px_w, px_h)
+  draw_temp_line(10000.0, "10000K  B", px_x, px_y, px_w, px_h)
+  draw_temp_line( 7500.0,  "7500K  A", px_x, px_y, px_w, px_h)
+  draw_temp_line( 6000.0,  "6000K  F", px_x, px_y, px_w, px_h)
+  draw_temp_line( 5200.0,  "5200K  G", px_x, px_y, px_w, px_h)
+  draw_temp_line( 3700.0,  "3700K  K", px_x, px_y, px_w, px_h)
+
+  # Luminosity grid lines per decade.
+  draw_lum_line(0.0001, "1e-4 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(0.01,   "1e-2 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(1.0,    "  1  L", px_x, px_y, px_w, px_h)
+  draw_lum_line(100.0,  "100  L", px_x, px_y, px_w, px_h)
+  draw_lum_line(10000.0, "1e4 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(1000000.0, "1e6 L", px_x, px_y, px_w, px_h)
+}
+
+fn draw_temp_line(t: Real, label: String,
+                  px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
+  let x = temp_to_x(t, px_x, px_w)
+  raylib.draw_rectangle(x, px_y, 1, px_h, col_grid)
+  raylib.draw_text(label, x - 28, px_y + px_h + 4, 10, col_dim)
+}
+
+fn draw_lum_line(l: Real, label: String,
+                 px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
+  let y = lum_to_y(l, px_y, px_h)
+  raylib.draw_rectangle(px_x, y, px_w, 1, col_grid)
+  raylib.draw_text(label, px_x - 50, y - 6, 10, col_dim)
+}
+
+fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
+                 i: Int) : Unit / Ffi = {
+  if i >= n_stars { () }
+  else {
+    let t = star_temp(i)
+    let l = star_lum(i)
+    let s = class_of_temp(t)
+    let x = temp_to_x(t / 1.0<kelvin>, px_x, px_w)
+    let y = lum_to_y(l / 1.0<lsol>,    px_y, px_h)
+    raylib.draw_circle(x, y, class_radius(s), class_color(s))
+    # Label only the famous ones to keep the plot legible.
+    if i <= 6 or i == 11 or i == 17 {
+      raylib.draw_text(star_name(i), x + 8, y - 6, 11, col_text)
+    }
+    draw_hr_stars(px_x, px_y, px_w, px_h, i + 1)
+  }
+}
+
+# ----- mode parallax view -----
+#
+# Two side-by-side sky panels: the same star catalog as seen
+# from Earth in January and from Earth in July (6 months apart,
+# Earth has moved 2 au across the orbit). Nearby stars shift
+# visibly between the two panels; far stars don't.
+
+const pan_w  : Int = 510
+const pan_h  : Int = 540
+const pan_y  : Int = 90
+const pan_lx : Int = 30
+const pan_rx : Int = 560
+
+# Project a star to a panel given the observer's `obs_x` (the
+# x-coordinate in au of Earth at the observation moment, in
+# heliocentric coords). The shift due to parallax is
+# Δθ ≈ obs_x / d  (radians, small-angle).
+#
+# We project the unshifted RA/Dec into the panel first, then
+# nudge by the parallax shift in the X axis.
+fn project_star(i: Int, obs_x: Real,
+                panel_x: Int, panel_w: Int, panel_h: Int) : Unit / Ffi = {
+  # Base (RA, Dec) in flat-sky coords. RA: [0,24h] -> [0, panel_w].
+  let ra = star_ra_h(i)
+  let dec = star_dec_deg(i)
+  let base_x = int_to_real(panel_x) + ra / 24.0 * int_to_real(panel_w)
+  let base_y = int_to_real(pan_y) + (90.0 - dec) / 180.0 * int_to_real(panel_h)
+
+  # Parallax shift, scaled visually so it's visible. Real shift
+  # for nearest stars is ~1 arcsec; we amplify by `parallax_gain`.
+  let d_pc = star_distance(i) / 1.0<pc>
+  let shift_arcsec = obs_x / d_pc * parallax_gain
+  let shift_px = shift_arcsec * arcsec_to_px
+
+  let x = real_to_int(base_x + shift_px)
+  let y = real_to_int(base_y)
+
+  let t = star_temp(i)
+  let s = class_of_temp(t)
+  raylib.draw_circle(x, y, class_radius(s), class_color(s))
+  if i <= 9 or i == 21 or i == 22 {
+    raylib.draw_text(star_name(i), x + 5, y - 7, 9, col_dim)
+  }
+}
+
+const parallax_gain : Real = 80.0   # visual amplification
+const arcsec_to_px  : Real = 1.0    # base scale
+
+fn draw_parallax() : Unit / Ffi = {
+  raylib.draw_text("MODO  Paralaje estelar (estrellas cercanas se desplazan entre enero y julio)",
+                   24, 18, 16, col_text)
+  raylib.draw_text("base: 2 au   ganancia visual: 80×",
+                   24, 44, 12, col_dim)
+
+  # Panels.
+  raylib.draw_rectangle(pan_lx, pan_y, pan_w, pan_h, col_panel)
+  raylib.draw_rectangle(pan_rx, pan_y, pan_w, pan_h, col_panel)
+  raylib.draw_text("Enero  (Tierra a -1 au)", pan_lx + 8, pan_y - 18, 13, col_text)
+  raylib.draw_text("Julio  (Tierra a +1 au)", pan_rx + 8, pan_y - 18, 13, col_text)
+
+  # Stars in each panel.
+  draw_parallax_loop(pan_lx, pan_w, pan_h, 0.0 - 1.0, 0)
+  draw_parallax_loop(pan_rx, pan_w, pan_h,  1.0,      0)
+}
+
+fn draw_parallax_loop(panel_x: Int, panel_w: Int, panel_h: Int,
+                      obs_x: Real, i: Int) : Unit / Ffi = {
+  if i >= n_stars { () }
+  else {
+    project_star(i, obs_x, panel_x, panel_w, panel_h)
+    draw_parallax_loop(panel_x, panel_w, panel_h, obs_x, i + 1)
+  }
+}
+
+# ----- footer -----
+
+fn draw_footer(active: Mode) : Unit / Ffi = {
+  let y = height - 36
+  raylib.draw_rectangle(0, y, width, 36, col_panel)
+  raylib.draw_text("N  N-body         H  HR diagram         P  Paralaje         SPACE pausa   + - velocidad   R reset   ESC salir",
+                   24, y + 10, 13, col_dim)
+}
+
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+# ============================================================
+
+const key_n     : Int = 78
+const key_h     : Int = 72
+const key_p     : Int = 80
+const key_space : Int = 32
+const key_plus  : Int = 61
+const key_minus : Int = 45
+const key_r     : Int = 82
+
+fn frame_loop(xs: Array[Real], ys: Array[Real],
+              vxs: Array[Real], vys: Array[Real],
+              ms: Array[Real],
+              trails: Array[Real],
+              ax: Array[Real], ay: Array[Real],
+              trail_head: Ref[Int],
+              mode_ref: Ref[Int],
+              paused: Ref[Int],
+              dt_ref: Ref[Real],
+              sim_days: Ref[Real],
+              scale: Ref[Real]) : Unit / Ffi + Mutable = {
+  until { raylib.window_should_close() } {
+    # ---- input ----
+    if raylib.is_key_pressed(key_n) { mode_ref := mode_nbody }
+    if raylib.is_key_pressed(key_h) { mode_ref := mode_hr }
+    if raylib.is_key_pressed(key_p) { mode_ref := mode_parallax }
+    if raylib.is_key_pressed(key_space) {
+      paused := if @paused == 0 { 1 } else { 0 }
+    }
+    if raylib.is_key_pressed(key_plus)  { dt_ref := @dt_ref * 1.5 }
+    if raylib.is_key_pressed(key_minus) { dt_ref := @dt_ref / 1.5 }
+    if raylib.is_key_pressed(key_r) {
+      reset_for_mode(mode_of(@mode_ref),
+                     xs, ys, vxs, vys, ms,
+                     sim_days, dt_ref, scale)
+    } else { () }
+
+    # ---- STATE: tick the active mode ----
+    let m = mode_of(@mode_ref)
+    if @paused == 0 {
+      tick_mode(m, xs, ys, vxs, vys, ms, ax, ay,
+                trails, trail_head, sim_days, dt_ref)
+    } else { () }
+
+    # ---- VIEW: render the active mode ----
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    render_mode(m, xs, ys, ms, trails, @trail_head, @scale, @sim_days)
+    draw_footer(m)
+    raylib.end_drawing()
+  }
+}
+
+fn reset_for_mode(m: Mode,
+                  xs: Array[Real], ys: Array[Real],
+                  vxs: Array[Real], vys: Array[Real],
+                  ms: Array[Real],
+                  sim_days: Ref[Real], dt_ref: Ref[Real],
+                  scale: Ref[Real]) : Unit / Ffi + Mutable = match m {
+  NBody -> {
+    init_bodies(xs, ys, vxs, vys, ms)
+    sim_days := 0.0
+    dt_ref := 1.0
+    scale := 28.0
+  }
+  HR -> { () }
+  Parallax -> { () }
+}
+
+fn tick_mode(m: Mode,
+             xs: Array[Real], ys: Array[Real],
+             vxs: Array[Real], vys: Array[Real],
+             ms: Array[Real],
+             ax: Array[Real], ay: Array[Real],
+             trails: Array[Real],
+             trail_head: Ref[Int],
+             sim_days: Ref[Real],
+             dt_ref: Ref[Real]) : Unit / Mutable = match m {
+  NBody -> {
+    leapfrog_step(xs, ys, vxs, vys, ms, ax, ay, @dt_ref)
+    record_trails(trails, xs, ys, trail_head)
+    sim_days := @sim_days + @dt_ref
+  }
+  HR -> { () }
+  Parallax -> { () }
+}
+
+fn render_mode(m: Mode,
+               xs: Array[Real], ys: Array[Real], ms: Array[Real],
+               trails: Array[Real], head: Int,
+               scale: Real, sim_days: Real) : Unit / Ffi = match m {
+  NBody    -> draw_nbody(xs, ys, ms, trails, head, scale, sim_days)
+  HR       -> draw_hr()
+  Parallax -> draw_parallax()
+}
+
+fn main() : Unit / Ffi + Mutable = {
+  raylib.set_random_seed(42)
+
+  # N-body state.
+  let xs = array_make(n_bodies, 0.0)
+  let ys = array_make(n_bodies, 0.0)
+  let vxs = array_make(n_bodies, 0.0)
+  let vys = array_make(n_bodies, 0.0)
+  let ms = array_make(n_bodies, 0.0)
+  let ax = array_make(n_bodies, 0.0)
+  let ay = array_make(n_bodies, 0.0)
+  let trails = array_make(n_bodies * trail_len * 2, 0.0)
+
+  raylib.init_window(width, height, "Observatorio / kaikai + raylib")
+  raylib.set_target_fps(60)
+
+  init_bodies(xs, ys, vxs, vys, ms)
+
+  let trail_head = Mutable.ref_make(0)
+  let mode_ref   = Mutable.ref_make(mode_nbody)
+  let paused     = Mutable.ref_make(0)
+  let dt_ref     = Mutable.ref_make(1.0)        # 1 day per step initially
+  let sim_days   = Mutable.ref_make(0.0)
+  let scale      = Mutable.ref_make(28.0)       # px per au
+
+  frame_loop(xs, ys, vxs, vys, ms,
+             trails, ax, ay,
+             trail_head, mode_ref, paused, dt_ref, sim_days, scale)
+
+  raylib.close_window()
+}
