@@ -5,6 +5,7 @@
 # clear, ESC quit.
 
 import ffi.raylib
+import loop
 
 # ----- constants -----
 
@@ -57,39 +58,33 @@ fn neighbours(g: Array[Bool], c: Int, r: Int) : Int =
 
 # Compute next state into `dst` from `src`.
 fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit {
-  step_loop(src, dst, 0)
-}
-
-fn step_loop(src: Array[Bool], dst: Array[Bool], r: Int) : Unit {
-  if r >= rows { () }
-  else {
-    step_row(src, dst, 0, r)
-    step_loop(src, dst, r + 1)
-  }
-}
-
-fn step_row(src: Array[Bool], dst: Array[Bool], c: Int, r: Int) : Unit {
-  if c >= cols { () }
-  else {
-    let alive = src[idx(c, r)]
-    let n = neighbours(src, c, r)
-    let next_alive =
-      if alive {
-        if n == 2 { true } else if n == 3 { true } else { false }
-      } else {
-        if n == 3 { true } else { false }
-      }
-    dst[idx(c, r)] := next_alive
-    step_row(src, dst, c + 1, r)
+  var r = 0
+  repeat(rows) {
+    var c = 0
+    repeat(cols) {
+      let alive = src[idx(@c, @r)]
+      let n = neighbours(src, @c, @r)
+      let next_alive =
+        if alive {
+          if n == 2 { true } else if n == 3 { true } else { false }
+        } else {
+          if n == 3 { true } else { false }
+        }
+      dst[idx(@c, @r)] := next_alive
+      c := @c + 1
+    }
+    r := @r + 1
   }
 }
 
 # ----- seeding -----
 
-fn clear_grid(g: Array[Bool]) : Unit = clear_loop(g, 0)
-fn clear_loop(g: Array[Bool], i: Int) : Unit {
-  if i >= grid_len { () }
-  else { g[i] := false; clear_loop(g, i + 1) }
+fn clear_grid(g: Array[Bool]) : Unit {
+  var i = 0
+  repeat(grid_len) {
+    g[@i] := false
+    i := @i + 1
+  }
 }
 
 # Set cell, ignoring if out of bounds (we always pass in-range here).
@@ -153,19 +148,17 @@ fn seed(g: Array[Bool]) : Unit {
 
 # ----- rendering -----
 
-fn draw_cells(g: Array[Bool]) : Unit / Ffi = draw_cells_loop(g, 0)
-
-fn draw_cells_loop(g: Array[Bool], i: Int) : Unit / Ffi {
-  if i >= grid_len { () }
-  else {
-    if g[i] {
-      let c = i % cols
-      let r = i / cols
+fn draw_cells(g: Array[Bool]) : Unit / Ffi {
+  var i = 0
+  repeat(grid_len) {
+    if g[@i] {
+      let c = @i % cols
+      let r = @i / cols
       raylib.draw_rectangle(c * cell_size, r * cell_size,
-                         cell_size - 1, cell_size - 1,
-                         col_alive)
-                       }
-    draw_cells_loop(g, i + 1)
+                            cell_size - 1, cell_size - 1,
+                            col_alive)
+    }
+    i := @i + 1
   }
 }
 
@@ -192,52 +185,43 @@ fn current(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
 fn other(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
   if which == 0 { b } else { a }
 
-fn frame_loop(
-  a: Array[Bool], b: Array[Bool],
-  which: Int, gen: Int, frame: Int, paused: Bool
-) : Unit / Ffi {
-  if raylib.window_should_close() { () }
-  else {
+fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi {
+  var which = 0
+  var gen = 0
+  var frame = 0
+  var paused = false
+
+  until(() => raylib.window_should_close()) {
     # --- input ---
-    let toggle_pause = raylib.is_key_pressed(key_space)
-    let do_reset = raylib.is_key_pressed(key_r)
-    let do_clear = raylib.is_key_pressed(key_c)
+    if raylib.is_key_pressed(key_space) { paused := not @paused }
 
-    # `paused` and `gen` may be updated; do it via vars locally
-    var paused_v = paused
-    var gen_v = gen
-    var which_v = which
-
-    if toggle_pause { paused_v := not @paused_v}
-
-    if do_reset {
-      seed(current(@which_v, a, b))
-      gen_v := 0
+    if raylib.is_key_pressed(key_r) {
+      seed(current(@which, a, b))
+      gen := 0
     }
 
-    if do_clear {
-      clear_grid(current(@which_v, a, b))
-      gen_v := 0
+    if raylib.is_key_pressed(key_c) {
+      clear_grid(current(@which, a, b))
+      gen := 0
     }
 
     # --- step ---
-    let advance = (not @paused_v) and (frame % step_every == 0)
-    if advance {
-      let cur = current(@which_v, a, b)
-      let nxt = other(@which_v, a, b)
+    if (not @paused) and (@frame % step_every == 0) {
+      let cur = current(@which, a, b)
+      let nxt = other(@which, a, b)
       step_into(cur, nxt)
-      which_v := 1 - @which_v
-      gen_v := @gen_v + 1
+      which := 1 - @which
+      gen := @gen + 1
     }
 
     # --- draw ---
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    draw_cells(current(@which_v, a, b))
-    draw_hud(@gen_v, @paused_v)
+    draw_cells(current(@which, a, b))
+    draw_hud(@gen, @paused)
     raylib.end_drawing()
 
-    frame_loop(a, b, @which_v, @gen_v, frame + 1, @paused_v)
+    frame := @frame + 1
   }
 }
 
@@ -248,6 +232,6 @@ fn main() : Unit / Ffi {
 
   raylib.init_window(800, 600, "Conway / kaikai + raylib")
   raylib.set_target_fps(60)
-  frame_loop(a, b, 0, 0, 0, false)
+  frame_loop(a, b)
   raylib.close_window()
 }

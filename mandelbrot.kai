@@ -6,6 +6,7 @@
 # (arrow keys) and zoom (+/-) trigger a recompute.
 
 import ffi.raylib
+import loop
 
 # ----- viewport / iteration -----
 
@@ -72,21 +73,14 @@ fn compute(buf: Array[Int],
            im_min: Real, im_max: Real) : Unit {
   let dre = (re_max - re_min) / int_to_real(cw)
   let dim = (im_max - im_min) / int_to_real(ch)
-  compute_loop(buf, re_min, im_min, dre, dim, 0)
-}
-
-fn compute_loop(buf: Array[Int],
-                re_min: Real, im_min: Real,
-                dre: Real, dim: Real,
-                i: Int) : Unit {
-  if i >= buf_len { () }
-  else {
-    let cx = i % cw
-    let cy = i / cw
+  var i = 0
+  repeat(buf_len) {
+    let cx = @i % cw
+    let cy = @i / cw
     let c_re = re_min + int_to_real(cx) * dre
     let c_im = im_min + int_to_real(cy) * dim
-    buf[i] := iterate(c_re, c_im)
-    compute_loop(buf, re_min, im_min, dre, dim, i + 1)
+    buf[@i] := iterate(c_re, c_im)
+    i := @i + 1
   }
 }
 
@@ -133,21 +127,18 @@ fn color_for(n: Int) : Int {
 
 # ----- render -----
 
-fn draw_buffer(buf: Array[Int]) : Unit / Ffi = draw_loop(buf, 0)
-
-fn draw_loop(buf: Array[Int], i: Int) : Unit / Ffi {
-  if i >= buf_len { () }
-  else {
-    let n = buf[i]
-    if n >= max_iter {
-      # Interior: skip — background already painted black.
-      draw_loop(buf, i + 1)
-    } else {
-      let cx = i % cw
-      let cy = i / cw
+fn draw_buffer(buf: Array[Int]) : Unit / Ffi = {
+  var i = 0
+  repeat(buf_len) {
+    let n = buf[@i]
+    # Interior (n == max_iter) is skipped: the background was
+    # already painted black, so we save a DrawRectangle.
+    if n < max_iter {
+      let cx = @i % cw
+      let cy = @i / cw
       raylib.draw_rectangle(cx * px, cy * px, px, px, color_for(n))
-      draw_loop(buf, i + 1)
     }
+    i := @i + 1
   }
 }
 
@@ -251,8 +242,7 @@ fn frame_loop(
   im_min: Array[Real], im_max: Array[Real],
   dirty: Array[Int]
 ) : Unit / Ffi {
-  if raylib.window_should_close() { () }
-  else {
+  until(() => raylib.window_should_close()) {
     handle_input(re_min, re_max, im_min, im_max, dirty)
 
     if dirty[0] != 0 {
@@ -273,8 +263,6 @@ fn frame_loop(
     draw_buffer(buf)
     draw_hud(re_min[0], re_max[0], im_min[0], im_max[0], false)
     raylib.end_drawing()
-
-    frame_loop(buf, re_min, re_max, im_min, im_max, dirty)
   }
 }
 

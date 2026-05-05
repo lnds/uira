@@ -82,8 +82,11 @@ fn loop() : Unit / Ffi {
 Build it the same way as the demos — see the `Makefile` for the
 exact incantation. The short version: pipe the shim source and
 `pkg-config --cflags --libs raylib` through `CFLAGS`, set
-`KAI_NO_STDLIB=1` (kaikai 0.37.0's stdlib has unrelated
-type-check regressions), and let `kai build` do the rest.
+`KAI_NO_STDLIB=1` to skip the auto-prelude (it pulls a few
+modules with type-check regressions in 0.37.0), and let
+`kai build` do the rest. Individual stdlib modules can still
+be `import`ed explicitly — the demos use `import loop` for
+`repeat` / `until` / `while` / `forever`.
 
 ## Binding reference
 
@@ -238,12 +241,14 @@ so a fast 180° doesn't self-collide.
 - **`pub axiom` doesn't re-export** ([kaikai#244](https://github.com/lnds/kaikai/issues/244)).
   Workaround in this repo: each axiom is private to `ffi/raylib.kai`
   and a `pub fn` wraps it. Removable once #244 lands.
-- **`KAI_NO_STDLIB=1` is required** in 0.37.0 because the stdlib
-  has type-check regressions in unrelated modules
-  (`option`, `result`, `list`, `regexp`, `json`) that cascade
-  into any build that loads it. Demos rely only on compiler
-  builtins (`Array[T]`, `print`, `int_to_string`,
-  `real_to_string`, `int_to_real`).
+- **`KAI_NO_STDLIB=1` is required** in 0.37.0 to skip the
+  auto-prelude — a handful of stdlib modules (`option`,
+  `result`, `list`, `regexp`, `json`) have type-check
+  regressions that cascade into any build loading the prelude.
+  Individual modules still work via explicit `import`; the
+  demos use `import loop` for `repeat` / `until` and rely on
+  compiler builtins (`Array[T]`, `print`, `int_to_string`,
+  `real_to_string`, `int_to_real`) for the rest.
 
 ## License
 

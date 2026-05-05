@@ -6,6 +6,7 @@
 # randomize, ESC quit.
 
 import ffi.raylib
+import loop
 
 # ----- constants -----
 
@@ -49,20 +50,14 @@ fn iadd(c: Array[Int], v: Int) : Unit   { c[0] := c[0] + v }
 # ----- state -----
 
 fn randomize(xs: Array[Real], ys: Array[Real],
-             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi =
-  randomize_loop(xs, ys, vxs, vys, 0)
-
-fn randomize_loop(xs: Array[Real], ys: Array[Real],
-                  vxs: Array[Real], vys: Array[Real], i: Int) : Unit / Ffi {
-  if i >= count { () }
-  else {
-    xs[i] := int_to_real(raylib.get_random_value(0, 800))
-    ys[i] := int_to_real(raylib.get_random_value(0, 600))
-    let vx_raw = int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    let vy_raw = int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    vxs[i] := vx_raw
-    vys[i] := vy_raw
-    randomize_loop(xs, ys, vxs, vys, i + 1)
+             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi {
+  var i = 0
+  repeat(count) {
+    xs[@i] := int_to_real(raylib.get_random_value(0, 800))
+    ys[@i] := int_to_real(raylib.get_random_value(0, 600))
+    vxs[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    vys[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    i := @i + 1
   }
 }
 
@@ -71,24 +66,19 @@ fn randomize_loop(xs: Array[Real], ys: Array[Real],
 # Walk all j != i, classify pair distance against each radius,
 # accumulate sep/ali/coh contributions into ref-cells.
 
-fn scan_loop(
+fn scan_neighbours(
   i: Int, xi: Real, yi: Real,
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
-  j: Int,
   sep_x: Array[Real], sep_y: Array[Real],
   ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
   coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
 ) : Unit {
-  if j >= count { () }
-  else {
-    if j == i {
-      scan_loop(i, xi, yi, xs, ys, vxs, vys, j + 1,
-                sep_x, sep_y, ali_x, ali_y, n_ali,
-                coh_x, coh_y, n_coh)
-    } else {
-      let dx = xi - xs[j]
-      let dy = yi - ys[j]
+  var j = 0
+  repeat(count) {
+    if @j != i {
+      let dx = xi - xs[@j]
+      let dy = yi - ys[@j]
       let d2 = dx * dx + dy * dy
 
       if d2 < r_sep_sq and d2 > 0.0001 {
@@ -99,21 +89,18 @@ fn scan_loop(
       }
 
       if d2 < r_align_sq {
-        radd(ali_x, vxs[j])
-        radd(ali_y, vys[j])
+        radd(ali_x, vxs[@j])
+        radd(ali_y, vys[@j])
         iadd(n_ali, 1)
       }
 
       if d2 < r_coh_sq {
-        radd(coh_x, xs[j])
-        radd(coh_y, ys[j])
+        radd(coh_x, xs[@j])
+        radd(coh_y, ys[@j])
         iadd(n_coh, 1)
       }
-
-      scan_loop(i, xi, yi, xs, ys, vxs, vys, j + 1,
-                sep_x, sep_y, ali_x, ali_y, n_ali,
-                coh_x, coh_y, n_coh)
     }
+    j := @j + 1
   }
 }
 
@@ -146,9 +133,9 @@ fn step_one(
   rclear(ali_x); rclear(ali_y); iclear(n_ali)
   rclear(coh_x); rclear(coh_y); iclear(n_coh)
 
-  scan_loop(i, xi, yi, xs, ys, vxs, vys, 0,
-            sep_x, sep_y, ali_x, ali_y, n_ali,
-            coh_x, coh_y, n_coh)
+  scan_neighbours(i, xi, yi, xs, ys, vxs, vys,
+                  sep_x, sep_y, ali_x, ali_y, n_ali,
+                  coh_x, coh_y, n_coh)
 
   let coh_dx = if n_coh[0] > 0 { (coh_x[0] / int_to_real(n_coh[0])) - xi } else { 0.0 }
   let coh_dy = if n_coh[0] > 0 { (coh_y[0] / int_to_real(n_coh[0])) - yi } else { 0.0 }
@@ -180,28 +167,12 @@ fn step_velocities(
   let sep_x = rcell(); let sep_y = rcell()
   let ali_x = rcell(); let ali_y = rcell(); let n_ali = icell()
   let coh_x = rcell(); let coh_y = rcell(); let n_coh = icell()
-  step_velocities_loop(xs, ys, vxs, vys, next_vxs, next_vys,
-                       sep_x, sep_y, ali_x, ali_y, n_ali,
-                       coh_x, coh_y, n_coh, 0)
-                     }
-
-fn step_velocities_loop(
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real],
-  sep_x: Array[Real], sep_y: Array[Real],
-  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
-  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int],
-  i: Int
-) : Unit {
-  if i >= count { () }
-  else {
-    step_one(i, xs, ys, vxs, vys, next_vxs, next_vys,
+  var i = 0
+  repeat(count) {
+    step_one(@i, xs, ys, vxs, vys, next_vxs, next_vys,
              sep_x, sep_y, ali_x, ali_y, n_ali,
              coh_x, coh_y, n_coh)
-    step_velocities_loop(xs, ys, vxs, vys, next_vxs, next_vys,
-                         sep_x, sep_y, ali_x, ali_y, n_ali,
-                         coh_x, coh_y, n_coh, i + 1)
+    i := @i + 1
   }
 }
 
@@ -211,21 +182,14 @@ fn apply_step(
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
-) : Unit = apply_loop(xs, ys, vxs, vys, next_vxs, next_vys, 0)
-
-fn apply_loop(
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real],
-  i: Int
 ) : Unit {
-  if i >= count { () }
-  else {
-    vxs[i] := next_vxs[i]
-    vys[i] := next_vys[i]
-    xs[i] := wrap_pos(xs[i] + vxs[i], width)
-    ys[i] := wrap_pos(ys[i] + vys[i], height)
-    apply_loop(xs, ys, vxs, vys, next_vxs, next_vys, i + 1)
+  var i = 0
+  repeat(count) {
+    vxs[@i] := next_vxs[@i]
+    vys[@i] := next_vys[@i]
+    xs[@i] := wrap_pos(xs[@i] + vxs[@i], width)
+    ys[@i] := wrap_pos(ys[@i] + vys[@i], height)
+    i := @i + 1
   }
 }
 
@@ -264,15 +228,11 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
 }
 
 fn draw_all(xs: Array[Real], ys: Array[Real],
-            vxs: Array[Real], vys: Array[Real]) : Unit / Ffi =
-  draw_loop(xs, ys, vxs, vys, 0)
-
-fn draw_loop(xs: Array[Real], ys: Array[Real],
-             vxs: Array[Real], vys: Array[Real], i: Int) : Unit / Ffi {
-  if i >= count { () }
-  else {
-    draw_one(xs[i], ys[i], vxs[i], vys[i])
-    draw_loop(xs, ys, vxs, vys, i + 1)
+            vxs: Array[Real], vys: Array[Real]) : Unit / Ffi {
+  var i = 0
+  repeat(count) {
+    draw_one(xs[@i], ys[@i], vxs[@i], vys[@i])
+    i := @i + 1
   }
 }
 
@@ -290,22 +250,20 @@ fn draw_hud(paused: Bool) : Unit / Ffi {
 fn frame_loop(
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real],
-  paused: Bool
+  next_vxs: Array[Real], next_vys: Array[Real]
 ) : Unit / Ffi {
-  if raylib.window_should_close() { () }
-  else {
-    var paused_v = paused
+  var paused = false
 
+  until(() => raylib.window_should_close()) {
     if raylib.is_key_pressed(key_space) {
-      paused_v := not @paused_v
+      paused := not @paused
     }
 
     if raylib.is_key_pressed(key_r) {
       randomize(xs, ys, vxs, vys)
     }
 
-    if not @paused_v {
+    if not @paused {
       step_velocities(xs, ys, vxs, vys, next_vxs, next_vys)
       apply_step(xs, ys, vxs, vys, next_vxs, next_vys)
     }
@@ -313,10 +271,8 @@ fn frame_loop(
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
     draw_all(xs, ys, vxs, vys)
-    draw_hud(@paused_v)
+    draw_hud(@paused)
     raylib.end_drawing()
-
-    frame_loop(xs, ys, vxs, vys, next_vxs, next_vys, @paused_v)
   }
 }
 
@@ -332,6 +288,6 @@ fn main() : Unit / Ffi {
 
   raylib.init_window(800, 600, "Boids / kaikai + raylib")
   raylib.set_target_fps(60)
-  frame_loop(xs, ys, vxs, vys, next_vxs, next_vys, false)
+  frame_loop(xs, ys, vxs, vys, next_vxs, next_vys)
   raylib.close_window()
 }

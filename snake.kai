@@ -6,6 +6,7 @@
 # to quit.
 
 import ffi.raylib
+import loop
 
 # ----- grid / window -----
 
@@ -222,26 +223,19 @@ fn cell_in_body_range_loop(
 
 # ----- render -----
 
-fn draw_grid() : Unit / Ffi = draw_grid_rows(0)
-
-fn draw_grid_rows(r: Int) : Unit / Ffi {
-  if r >= rows { () }
-  else {
-    draw_grid_cols(r, 0)
-    draw_grid_rows(r + 1)
-  }
-}
-
-fn draw_grid_cols(r: Int, c: Int) : Unit / Ffi {
-  if c >= cols { () }
-  else {
-    # Subtle checkerboard so the playfield is legible.
-    let dark = (c + r) % 2 == 0
-    if dark {
-      raylib.draw_rectangle(c * cell_size, r * cell_size,
-                            cell_size, cell_size, col_grid_dark)
-                          }
-    draw_grid_cols(r, c + 1)
+fn draw_grid() : Unit / Ffi {
+  var r = 0
+  repeat(rows) {
+    var c = 0
+    repeat(cols) {
+      # Subtle checkerboard so the playfield is legible.
+      if (@c + @r) % 2 == 0 {
+        raylib.draw_rectangle(@c * cell_size, @r * cell_size,
+                              cell_size, cell_size, col_grid_dark)
+      }
+      c := @c + 1
+    }
+    r := @r + 1
   }
 }
 
@@ -293,26 +287,26 @@ fn frame_loop(
   head_idx: Array[Int], tail_idx: Array[Int],
   direction: Array[Int], pending_dir: Array[Int],
   apple_x: Array[Int], apple_y: Array[Int],
-  score: Array[Int], game_over: Array[Int],
-  frame: Int
+  score: Array[Int], game_over: Array[Int]
 ) : Unit / Ffi {
-  if raylib.window_should_close() { () }
-  else {
+  var frame = 0
+
+  until(() => raylib.window_should_close()) {
     # Restart on R, even mid-game.
     if raylib.is_key_pressed(key_r) {
       reset(body_x, body_y, head_idx, tail_idx,
             direction, pending_dir,
             apple_x, apple_y, score, game_over)
-          }
+    }
 
     if game_over[0] == 0 {
       read_input(direction, pending_dir)
-      if frame % step_every == 0 {
+      if @frame % step_every == 0 {
         step(body_x, body_y, head_idx, tail_idx,
              direction, pending_dir,
              apple_x, apple_y, score, game_over)
-           }
-         }
+      }
+    }
 
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
@@ -322,10 +316,7 @@ fn frame_loop(
     draw_hud(score[0], game_over[0] != 0)
     raylib.end_drawing()
 
-    frame_loop(body_x, body_y, head_idx, tail_idx,
-               direction, pending_dir,
-               apple_x, apple_y, score, game_over,
-               frame + 1)
+    frame := @frame + 1
   }
 }
 
@@ -352,7 +343,6 @@ fn main() : Unit / Ffi {
 
   frame_loop(body_x, body_y, head_idx, tail_idx,
              direction, pending_dir,
-             apple_x, apple_y, score, game_over,
-             0)
+             apple_x, apple_y, score, game_over)
   raylib.close_window()
 }
