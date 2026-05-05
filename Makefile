@@ -10,10 +10,9 @@ RAYLIB_LIBS   := $(shell pkg-config --libs raylib)
 SHIM_C := ffi/raylib_shim.c
 SHIM_H := ffi/raylib_shim.h
 
-# kaikai's stdlib has type-checking regressions in 0.37.0 that
-# spuriously fail unrelated builds, so we opt out and rely only on
-# compiler builtins (Array, print, int_to_string, real_to_string,
-# int_to_real). FFI primitives (extern_c axioms) work either way.
+# Skip the auto-loaded prelude. The demos rely on compiler builtins
+# (Array, print, int_to_string, real_to_string, int_to_real) and
+# import the few stdlib modules they need explicitly (e.g. `loop`).
 KAI_ENV := KAI_NO_STDLIB=1
 KAI_CFLAGS := -std=c99 -O2 -Wno-unused-function -Wno-unused-variable \
               -include $(SHIM_H) $(RAYLIB_CFLAGS) $(SHIM_C) $(RAYLIB_LIBS)
