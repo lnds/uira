@@ -39,14 +39,15 @@ uira/
 - `cc` (clang or gcc) with C99.
 - `pkg-config`.
 - raylib 5.x. On macOS: `brew install raylib`.
-- A working `kai` driver from a sibling kaikai checkout. The
-  Makefile expects it at `../kaikai/bin/kai`; override with
-  `KAI_BIN=/path/to/kai`. kaikai 0.37+ is required (FFI v1).
+- kaikai 0.41+. On macOS:
+  `brew install lnds/kaikai/kaikai`. The Makefile picks up
+  whatever `kai` is on `$PATH`; override to point at a sibling
+  checkout with `make KAI_BIN=../kaikai/bin/kai`.
 
 ## Build & run
 
 ```sh
-make                  # all demos -> ./build/{conway,boids,mandelbrot,snake}
+make                  # all 7 demos -> ./build/
 make conway           # one at a time
 make run-snake        # build and run
 ```

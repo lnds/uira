@@ -1,8 +1,12 @@
-# kaikai + raylib demos. The kai compiler at the sibling kaikai/
-# repo emits C and links via cc; we pipe in the FFI shim and the
-# raylib pkg-config flags through CFLAGS.
+# kaikai + raylib demos. The kai compiler emits C and links via
+# cc; we pipe in the FFI shim and the raylib pkg-config flags
+# through CFLAGS.
+#
+# Defaults to the `kai` on $PATH (e.g. `brew install
+# lnds/kaikai/kaikai`). Override to point at a sibling kaikai
+# checkout: `make KAI_BIN=../kaikai/bin/kai`.
 
-KAI_BIN ?= ../kaikai/bin/kai
+KAI_BIN ?= kai
 
 RAYLIB_CFLAGS := $(shell pkg-config --cflags raylib)
 RAYLIB_LIBS   := $(shell pkg-config --libs raylib)
