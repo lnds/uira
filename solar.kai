@@ -1,0 +1,410 @@
+# Sistema solar — kaikai + raylib showcase
+#
+# Exercises kaikai 0.38 features alongside the raylib FFI:
+#
+#   - Units of measure (m12.5):   Real<au>, Real<days>, Real<rad>
+#                                 plus the alias rad_per_day.
+#                                 Orbital kinematics typecheck only
+#                                 because the units balance:
+#                                 Real<rad/days> * Real<days> = Real<rad>.
+#   - Sum types + pattern match:  type Body = Star | Planet | Moon, with
+#                                 per-variant rendering and a guarded
+#                                 match that classifies planets as
+#                                 inner / outer.
+#   - Mutable effect (PR #265):   functions that mutate caller-owned
+#                                 arrays declare `/ Mutable`; functions
+#                                 that only mutate locally don't.
+#   - Custom effect + handler:    effect Event { perihelion(...) }.
+#                                 The simulation calls Event.perihelion;
+#                                 the handler in main pushes the event
+#                                 into a banner buffer the renderer
+#                                 reads.
+#
+# Build note: KAI_NO_STDLIB=1. The compiler 0.38 + auto-loaded
+# `protocols.kai` prelude trip a typer error ("expected: Int /
+# found: lambda") with bogus coordinates pointing at protocols.kai
+# line 182. Reported separately. The Makefile builds this demo
+# under KAI_NO_STDLIB=1 to dodge the issue.
+#
+# Controles:
+#   SPACE   pausa
+#   + / -   acelerar / frenar
+#   T       trazas on/off
+#   R       reset
+#   ESC     salir
+
+import ffi.raylib
+import loop
+
+# ----- units of measure -----
+
+unit au              # astronomical units
+unit days            # time
+unit rad             # angle
+unit rad_per_day = rad / days
+
+# ----- screen + view -----
+
+const width  : Int = 900
+const height : Int = 700
+const cx     : Real = 450.0
+const cy     : Real = 360.0
+const px_per_au : Real = 90.0   # 1 au -> 90 px on screen
+
+# ----- colour palette (0xRRGGBBAA) -----
+
+const col_bg     : Int = 0x05070dFF
+const col_text   : Int = 0xfdf9b9FF
+const col_dim    : Int = 0x6b6f5cFF
+const col_orbit  : Int = 0x202833FF
+const col_banner : Int = 0xff6f59FF
+const col_trail  : Int = 0x33394aFF
+
+# ----- bodies -----
+#
+# Variant payloads (positional):
+#   Star    (label, color, radius)
+#   Planet  (label, dist, period, color, radius)
+#   Moon    (label, parent_idx, dist, period, color, radius)
+type Body
+  = Star(String, Int, Real)
+  | Planet(String, Real<au>, Real<days>, Int, Real)
+  | Moon(String, Int, Real<au>, Real<days>, Int, Real)
+
+const n_bodies : Int = 7
+
+fn build_bodies() : Array[Body] {
+  let bs = array_make(n_bodies, Star("", 0, 0.0))
+  bs[0] := Star("Sol", 0xffd166FF, 18.0)
+  bs[1] := Planet("Mercurio", 0.39<au>, 88.0<days>,    0xb08968FF, 4.0)
+  bs[2] := Planet("Venus",    0.72<au>, 224.7<days>,   0xefcb68FF, 6.0)
+  bs[3] := Planet("Tierra",   1.00<au>, 365.25<days>,  0x4ea1ffFF, 6.5)
+  bs[4] := Planet("Marte",    1.52<au>, 687.0<days>,   0xff6b6bFF, 5.0)
+  bs[5] := Planet("Júpiter",  3.20<au>, 1500.0<days>,  0xfca311FF, 11.0)
+  bs[6] := Moon  ("Luna", 3,  0.30<au>, 27.3<days>,    0xd9d9d9FF, 2.5)
+  bs
+}
+
+# Inner-vs-outer planet classification — guarded match on a
+# dimensioned threshold (`d <= 1.5<au>`).
+fn class_of(b: Body) : String = match b {
+  Planet(_, d, _, _, _) if d <= 1.5<au>  -> "interior"
+  Planet(_, _, _, _, _)                  -> "exterior"
+  Moon(_, _, _, _, _, _)                 -> "satélite"
+  Star(_, _, _)                          -> "estrella"
+}
+
+fn body_label(b: Body) : String = match b {
+  Star(s, _, _)              -> s
+  Planet(s, _, _, _, _)      -> s
+  Moon(s, _, _, _, _, _)     -> s
+}
+
+# ----- effect: events worth highlighting -----
+#
+# Perihelion crossings are surfaced via a custom effect rather
+# than direct prints. The handler in main pushes the message
+# into a banner buffer that the renderer reads — same source
+# code would work with a different handler (file logger, network
+# sink, …).
+
+effect Event {
+  perihelion(name: String, day: Real)  : Unit
+}
+
+const banner_slots : Int = 3
+
+fn push_banner(buf: Array[String], head: Ref[Int], msg: String) : Unit / Mutable = {
+  let i = Mutable.ref_get(head)
+  buf[i] := msg
+  Mutable.ref_set(head, (i + 1) % banner_slots)
+}
+
+# ----- orbital position -----
+#
+# Where the units pay off:
+#   omega : Real<rad_per_day>,  t : Real<days>
+#   omega * t : Real<rad>       (the unit cancellation makes the
+#                                expression typecheck)
+# Then divide by 1.0<rad> to strip the unit before feeding the
+# bare Real into raylib's cos/sin.
+
+fn orbit_x(dist: Real<au>, period: Real<days>, t: Real<days>, base_x: Real) : Real / Ffi = {
+  let two_pi : Real<rad> = 6.2831853<rad>
+  let omega  : Real<rad_per_day> = two_pi / period
+  let theta  : Real<rad> = omega * t
+  let bare = theta / 1.0<rad>
+  let r_px = (dist / 1.0<au>) * px_per_au
+  base_x + r_px * raylib.cos(bare)
+}
+
+fn orbit_y(dist: Real<au>, period: Real<days>, t: Real<days>, base_y: Real) : Real / Ffi = {
+  let two_pi : Real<rad> = 6.2831853<rad>
+  let omega  : Real<rad_per_day> = two_pi / period
+  let theta  : Real<rad> = omega * t
+  let bare = theta / 1.0<rad>
+  let r_px = (dist / 1.0<au>) * px_per_au
+  base_y + r_px * raylib.sin(bare)
+}
+
+fn project_one(b: Body, t: Real<days>,
+               xs: Array[Real], ys: Array[Real],
+               i: Int) : Unit / Ffi + Mutable = match b {
+  Star(_, _, _) -> {
+    xs[i] := cx
+    ys[i] := cy
+  }
+  Planet(_, dist, period, _, _) -> {
+    xs[i] := orbit_x(dist, period, t, cx)
+    ys[i] := orbit_y(dist, period, t, cy)
+  }
+  Moon(_, parent, dist, period, _, _) -> {
+    xs[i] := orbit_x(dist, period, t, xs[parent])
+    ys[i] := orbit_y(dist, period, t, ys[parent])
+  }
+}
+
+fn project_all(bodies: Array[Body], t: Real<days>,
+               xs: Array[Real], ys: Array[Real]) : Unit / Ffi + Mutable =
+  project_loop(bodies, t, xs, ys, 0)
+
+fn project_loop(bodies: Array[Body], t: Real<days>,
+                xs: Array[Real], ys: Array[Real], i: Int) : Unit / Ffi + Mutable = {
+  if i >= n_bodies { () }
+  else {
+    project_one(bodies[i], t, xs, ys, i)
+    project_loop(bodies, t, xs, ys, i + 1)
+  }
+}
+
+# Floor for non-negative reals (we re-implement so the demo
+# remains buildable under KAI_NO_STDLIB=1; stdlib has a
+# `real_floor` of its own under `math/real.kai`).
+fn floor_nonneg(x: Real) : Real = {
+  let n = real_to_int(x)
+  let f = int_to_real(n)
+  if f > x { f - 1.0 } else { f }
+}
+
+# Detect events between two adjacent simulation days. A planet
+# crossed perihelion if floor(day / period) bumped up.
+fn detect_one(b: Body, last_day: Real, day: Real) : Unit / Event = match b {
+  Planet(name, _, period, _, _) -> {
+    let p = period / 1.0<days>
+    if floor_nonneg(day / p) > floor_nonneg(last_day / p) {
+      Event.perihelion(name, day)
+    }
+  }
+  Star(_, _, _)              -> { () }
+  Moon(_, _, _, _, _, _)     -> { () }
+}
+
+fn detect_events(bodies: Array[Body],
+                 last_day: Real, day: Real) : Unit / Event =
+  detect_loop(bodies, last_day, day, 0)
+
+fn detect_loop(bodies: Array[Body],
+               last_day: Real, day: Real, i: Int) : Unit / Event = {
+  if i >= n_bodies { () }
+  else {
+    detect_one(bodies[i], last_day, day)
+    detect_loop(bodies, last_day, day, i + 1)
+  }
+}
+
+# ----- rendering -----
+
+fn draw_orbit(b: Body) : Unit / Ffi = match b {
+  Planet(_, dist, _, _, _) -> {
+    let r_px = (dist / 1.0<au>) * px_per_au
+    raylib.draw_circle(real_to_int(cx), real_to_int(cy), r_px, col_orbit)
+    raylib.draw_circle(real_to_int(cx), real_to_int(cy), r_px - 1.0, col_bg)
+  }
+  Star(_, _, _)              -> { () }
+  Moon(_, _, _, _, _, _)     -> { () }
+}
+
+fn draw_body(b: Body, x: Real, y: Real) : Unit / Ffi = match b {
+  Star(_, color, r)              ->
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+  Planet(_, _, _, color, r)      ->
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+  Moon(_, _, _, _, color, r)     ->
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+}
+
+# Trail buffer: per body, a ring of `trail_len` (x,y) points,
+# packed as Array[Real] with stride 2*trail_len.
+const trail_len : Int = 64
+
+fn record_trail(trails: Array[Real], heads: Array[Int],
+                idx: Int, x: Real, y: Real) : Unit / Mutable = {
+  let base = idx * trail_len * 2
+  let h = heads[idx]
+  trails[base + h * 2]     := x
+  trails[base + h * 2 + 1] := y
+  heads[idx] := (h + 1) % trail_len
+}
+
+fn record_all(trails: Array[Real], heads: Array[Int],
+              xs: Array[Real], ys: Array[Real]) : Unit / Mutable =
+  record_loop(trails, heads, xs, ys, 1)
+
+fn record_loop(trails: Array[Real], heads: Array[Int],
+               xs: Array[Real], ys: Array[Real], i: Int) : Unit / Mutable = {
+  if i >= n_bodies { () }
+  else { record_trail(trails, heads, i, xs[i], ys[i])
+         record_loop(trails, heads, xs, ys, i + 1) }
+}
+
+fn draw_trail(trails: Array[Real], idx: Int) : Unit / Ffi =
+  trail_loop(trails, idx, 0)
+
+fn trail_loop(trails: Array[Real], idx: Int, k: Int) : Unit / Ffi = {
+  if k >= trail_len - 1 { () }
+  else {
+    let base = idx * trail_len * 2
+    let i1 = base + k * 2
+    let i2 = base + (k + 1) * 2
+    let x1 = trails[i1]
+    let y1 = trails[i1 + 1]
+    let x2 = trails[i2]
+    let y2 = trails[i2 + 1]
+    if (x1 != 0.0 or y1 != 0.0) and (x2 != 0.0 or y2 != 0.0) {
+      raylib.draw_line(real_to_int(x1), real_to_int(y1),
+                       real_to_int(x2), real_to_int(y2), col_trail)
+    }
+    trail_loop(trails, idx, k + 1)
+  }
+}
+
+fn draw_orbits(bodies: Array[Body], i: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else { draw_orbit(bodies[i]); draw_orbits(bodies, i + 1) }
+}
+
+fn draw_bodies(bodies: Array[Body], xs: Array[Real], ys: Array[Real], i: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else { draw_body(bodies[i], xs[i], ys[i]); draw_bodies(bodies, xs, ys, i + 1) }
+}
+
+fn draw_trails(trails: Array[Real]) : Unit / Ffi = trails_loop(trails, 1)
+
+fn trails_loop(trails: Array[Real], i: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else { draw_trail(trails, i); trails_loop(trails, i + 1) }
+}
+
+fn draw_sidebar(bodies: Array[Body], i: Int, row: Int) : Unit / Ffi = {
+  if i >= n_bodies { () }
+  else if i == 0 { draw_sidebar(bodies, i + 1, row) }
+  else {
+    let b = bodies[i]
+    raylib.draw_text(body_label(b), 600, 80 + row * 22, 14, col_text)
+    raylib.draw_text(class_of(b), 720, 80 + row * 22, 14, col_dim)
+    draw_sidebar(bodies, i + 1, row + 1)
+  }
+}
+
+fn draw_banner(buf: Array[String], i: Int) : Unit / Ffi = {
+  if i >= banner_slots { () }
+  else {
+    let m = buf[i]
+    if string_length(m) > 0 {
+      raylib.draw_text(m, 20, 600 + i * 22, 16, col_banner)
+    }
+    draw_banner(buf, i + 1)
+  }
+}
+
+fn draw_hud(day: Real, speed: Real, paused: Bool, trails_on: Bool) : Unit / Ffi = {
+  raylib.draw_text("Sistema solar / kaikai + raylib", 20, 14, 22, col_text)
+  raylib.draw_text("SPACE pausa  + - velocidad  T trazas  R reset  ESC salir",
+                   20, 44, 14, col_dim)
+  raylib.draw_text("día " ++ real_to_string(day), 20, 70, 16, col_text)
+  raylib.draw_text("× " ++ real_to_string(speed), 200, 70, 16, col_text)
+  if paused    { raylib.draw_text("PAUSA", 300, 70, 16, col_banner) }
+  if trails_on { raylib.draw_text("trazas", 380, 70, 16, col_dim) }
+  raylib.draw_text("planetas:", 600, 56, 16, col_text)
+}
+
+# ----- frame loop -----
+
+const key_space : Int = 32
+const key_plus  : Int = 61
+const key_minus : Int = 45
+const key_r     : Int = 82
+const key_t     : Int = 84
+
+fn frame_loop(bodies: Array[Body],
+              xs: Array[Real], ys: Array[Real],
+              trails: Array[Real], trail_heads: Array[Int],
+              banner: Array[String]) : Unit / Ffi + Mutable + Event = {
+  var paused    = false
+  var trails_on = true
+  var day       = 0.0
+  var last_day  = 0.0
+  var speed     = 8.0
+  var prev_time = raylib.get_time()
+
+  until { raylib.window_should_close() } {
+    let now = raylib.get_time()
+    let dt = now - @prev_time
+    prev_time := now
+
+    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_t)     { trails_on := not @trails_on }
+    if raylib.is_key_pressed(key_r)     {
+      day := 0.0
+      last_day := 0.0
+    }
+    if raylib.is_key_pressed(key_plus)  { speed := @speed * 1.5 }
+    if raylib.is_key_pressed(key_minus) { speed := @speed / 1.5 }
+
+    if not @paused {
+      last_day := @day
+      day := @day + dt * @speed
+      project_all(bodies, @day * 1.0<days>, xs, ys)
+      detect_events(bodies, @last_day, @day)
+      if @trails_on { record_all(trails, trail_heads, xs, ys) }
+    }
+
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_orbits(bodies, 0)
+    if @trails_on { draw_trails(trails) }
+    draw_bodies(bodies, xs, ys, 0)
+    draw_hud(@day, @speed, @paused, @trails_on)
+    draw_sidebar(bodies, 0, 0)
+    draw_banner(banner, 0)
+    raylib.end_drawing()
+  }
+}
+
+fn main() : Unit / Ffi + Mutable = {
+  let bodies = build_bodies()
+  let xs = array_make(n_bodies, 0.0)
+  let ys = array_make(n_bodies, 0.0)
+  let trails = array_make(n_bodies * trail_len * 2, 0.0)
+  let trail_heads = array_make(n_bodies, 0)
+  let banner = array_make(banner_slots, "")
+  let banner_head = Mutable.ref_make(0)
+
+  raylib.init_window(width, height, "Sistema solar / kaikai + raylib")
+  raylib.set_target_fps(60)
+
+  # Effect handler: each Event.perihelion call lands here. The
+  # simulation never touches `banner`; this handler is the
+  # single decision point about how events become visible.
+  handle {
+    frame_loop(bodies, xs, ys, trails, trail_heads, banner)
+  } with Event {
+    perihelion(name, day, resume) -> {
+      push_banner(banner, banner_head,
+                  name ++ " en perihelio  (día " ++ real_to_string(day) ++ ")")
+      resume(())
+    }
+  }
+
+  raylib.close_window()
+}

@@ -10,16 +10,17 @@ RAYLIB_LIBS   := $(shell pkg-config --libs raylib)
 SHIM_C := ffi/raylib_shim.c
 SHIM_H := ffi/raylib_shim.h
 
-# Skip the auto-loaded prelude. The demos rely on compiler builtins
-# (Array, print, int_to_string, real_to_string, int_to_real) and
-# import the few stdlib modules they need explicitly (e.g. `loop`).
-KAI_ENV := KAI_NO_STDLIB=1
+# The stdlib prelude is auto-loaded — the demos rely on `loop`
+# (repeat / until / forever / while), and `mandelbrot` uses
+# `Complex` from `math/complex`. kaikai 0.41 closed the typer
+# regression that previously forced `KAI_NO_STDLIB=1` here.
 KAI_CFLAGS := -std=c99 -O2 -Wno-unused-function -Wno-unused-variable \
               -include $(SHIM_H) $(RAYLIB_CFLAGS) $(SHIM_C) $(RAYLIB_LIBS)
 
-.PHONY: all conway boids mandelbrot snake run-conway run-boids run-mandelbrot run-snake clean
+.PHONY: all conway boids mandelbrot snake kaikai solar portfolio \
+        run-conway run-boids run-mandelbrot run-snake run-kaikai run-solar run-portfolio clean
 
-all: conway boids mandelbrot snake
+all: conway boids mandelbrot snake kaikai solar portfolio
 
 conway: build/conway
 
@@ -29,17 +30,32 @@ mandelbrot: build/mandelbrot
 
 snake: build/snake
 
+kaikai: build/kaikai
+
+solar: build/solar
+
+portfolio: build/portfolio
+
 build/conway: conway.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
-	$(KAI_ENV) CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build conway.kai -o $@
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build conway.kai -o $@
 
 build/boids: boids.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
-	$(KAI_ENV) CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build boids.kai -o $@
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build boids.kai -o $@
 
 build/mandelbrot: mandelbrot.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
-	$(KAI_ENV) CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build mandelbrot.kai -o $@
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build mandelbrot.kai -o $@
 
 build/snake: snake.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
-	$(KAI_ENV) CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build snake.kai -o $@
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build snake.kai -o $@
+
+build/kaikai: kaikai.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build kaikai.kai -o $@
+
+build/solar: solar.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build solar.kai -o $@
+
+build/portfolio: portfolio.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build portfolio.kai -o $@
 
 build:
 	mkdir -p build
@@ -55,6 +71,15 @@ run-mandelbrot: build/mandelbrot
 
 run-snake: build/snake
 	./build/snake
+
+run-kaikai: build/kaikai
+	./build/kaikai
+
+run-solar: build/solar
+	./build/solar
+
+run-portfolio: build/portfolio
+	./build/portfolio
 
 clean:
 	rm -rf build

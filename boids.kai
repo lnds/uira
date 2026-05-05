@@ -41,16 +41,15 @@ const col_text : Int = 0xfdf9b9FF
 fn rcell() : Array[Real] = array_make(1, 0.0)
 fn icell() : Array[Int]  = array_make(1, 0)
 
-fn rclear(c: Array[Real]) : Unit { c[0] := 0.0 }
-fn iclear(c: Array[Int]) : Unit  { c[0] := 0 }
+fn rclear(c: Array[Real]) : Unit / Mutable { c[0] := 0.0 }
+fn iclear(c: Array[Int])  : Unit / Mutable { c[0] := 0 }
 
-fn radd(c: Array[Real], v: Real) : Unit { c[0] := c[0] + v }
-fn iadd(c: Array[Int], v: Int) : Unit   { c[0] := c[0] + v }
+fn add[T](c: Array[T], v: T) : Unit / Mutable { c[0] := c[0] + v }
 
 # ----- state -----
 
 fn randomize(xs: Array[Real], ys: Array[Real],
-             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi {
+             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi + Mutable {
   var i = 0
   repeat(count) {
     xs[@i] := int_to_real(raylib.get_random_value(0, 800))
@@ -73,7 +72,7 @@ fn scan_neighbours(
   sep_x: Array[Real], sep_y: Array[Real],
   ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
   coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
-) : Unit {
+) : Unit / Mutable {
   var j = 0
   repeat(count) {
     if @j != i {
@@ -84,20 +83,20 @@ fn scan_neighbours(
       if d2 < r_sep_sq and d2 > 0.0001 {
         # Push away — weight by 1/d² so close neighbours dominate.
         let inv = 1.0 / d2
-        radd(sep_x, dx * inv)
-        radd(sep_y, dy * inv)
+        add(sep_x, dx * inv)
+        add(sep_y, dy * inv)
       }
 
       if d2 < r_align_sq {
-        radd(ali_x, vxs[@j])
-        radd(ali_y, vys[@j])
-        iadd(n_ali, 1)
+        add(ali_x, vxs[@j])
+        add(ali_y, vys[@j])
+        add(n_ali, 1)
       }
 
       if d2 < r_coh_sq {
-        radd(coh_x, xs[@j])
-        radd(coh_y, ys[@j])
-        iadd(n_coh, 1)
+        add(coh_x, xs[@j])
+        add(coh_y, ys[@j])
+        add(n_coh, 1)
       }
     }
     j := @j + 1
@@ -123,7 +122,7 @@ fn step_one(
   sep_x: Array[Real], sep_y: Array[Real],
   ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
   coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
-) : Unit {
+) : Unit / Mutable {
   let xi = xs[i]
   let yi = ys[i]
   let vxi = vxs[i]
@@ -163,7 +162,7 @@ fn step_velocities(
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   let sep_x = rcell(); let sep_y = rcell()
   let ali_x = rcell(); let ali_y = rcell(); let n_ali = icell()
   let coh_x = rcell(); let coh_y = rcell(); let n_coh = icell()
@@ -182,7 +181,7 @@ fn apply_step(
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
-) : Unit {
+) : Unit / Mutable {
   var i = 0
   repeat(count) {
     vxs[@i] := next_vxs[@i]
@@ -251,10 +250,10 @@ fn frame_loop(
   xs: Array[Real], ys: Array[Real],
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   var paused = false
 
-  until(() => raylib.window_should_close()) {
+  until { raylib.window_should_close() } {
     if raylib.is_key_pressed(key_space) {
       paused := not @paused
     }

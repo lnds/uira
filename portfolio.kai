@@ -1,0 +1,577 @@
+# Portfolio dashboard — kaikai + raylib showcase
+#
+# A live mini-portfolio ticker. Eight positions evolve under a
+# random-walk price process; the screen shows a row per position
+# with quantity, mark-to-market price, P&L vs. cost basis, a
+# colour cue (gain / loss / neutral), and a sparkline of recent
+# prices. The footer tallies the portfolio in USD.
+#
+# The file is split in three layers, each behind a banner so the
+# fintech logic and the rendering code stay legible side by side:
+#
+#   1. ===== MODEL =====   pure domain: types, constants, the
+#                          fintech formulas (P&L, USD valuation,
+#                          P&L bands). No I/O, no rendering, no
+#                          mutation across function boundaries.
+#   2. ===== STATE =====   the in-memory portfolio: parallel
+#                          arrays for qty / basis / price /
+#                          sparkline, builders for the seed data,
+#                          and the per-tick random-walk step.
+#   3. ===== VIEW  =====   raylib rendering. Reads from the state
+#                          arrays; never mutates them. Layout
+#                          constants and draw_* functions live
+#                          here.
+#
+# Features showcased:
+#
+#   - Units of measure (m12.5):   Real<USD>, Real<EUR>, Real<shares>,
+#                                 Real<years>, plus the alias
+#                                 USD_per_EUR = USD / EUR for the FX
+#                                 rate. The portfolio total is
+#                                 declared Real<USD>; EUR-quoted
+#                                 positions only add into it after
+#                                 multiplying by the typed FX rate.
+#   - Sum types + match guards:   type Asset = Stock | Bond | Cash*,
+#                                 with a guarded match that classifies
+#                                 bond maturities and another for P&L
+#                                 bands (gain / loss / neutral).
+#   - Mutable / Ref:              positions are stored in parallel
+#                                 arrays the simulation mutates;
+#                                 `tick_count` is a Ref[Int] that
+#                                 paces the random-walk step.
+#   - Pipe operators:             `array_to_list(values) |> foldl(...)`
+#                                 sums the per-position USD values
+#                                 into the portfolio total.
+#
+# Controls:
+#   SPACE   pausa / reanudar la simulación
+#   R       regresar precios al cost basis
+#   ESC     salir
+
+import ffi.raylib
+import loop
+
+# ============================================================
+#  1. ===== MODEL ===============================================
+#
+#  Pure domain: types, constants, fintech formulas. Nothing in
+#  this section touches raylib or I/O. Functions are referentially
+#  transparent and unit-test-friendly: feed them numbers, get
+#  numbers back.
+# ============================================================
+
+# ----- units of measure -----
+
+unit USD
+unit EUR
+unit shares
+unit years
+unit USD_per_EUR = USD / EUR
+
+const fx_eur_usd : Real<USD_per_EUR> = 1.08<USD / EUR>
+
+# ----- domain types -----
+#
+# Variant payloads (positional):
+#   Stock    (ticker, sector)
+#   Bond     (issuer, maturity_years)
+#   CashUsd
+#   CashEur
+
+type Asset
+  = Stock(String, String)
+  | Bond(String, Real<years>)
+  | CashUsd
+  | CashEur
+
+type PnlBand = Gain | Loss | Neutral
+
+# ----- per-asset accessors (pattern match showcase) -----
+
+fn ticker_of(a: Asset) : String = match a {
+  Stock(t, _)              -> t
+  Bond(t, _)               -> t
+  CashUsd                  -> "USD"
+  CashEur                  -> "EUR"
+}
+
+# Inner-vs-outer planet logic for bonds: a guarded match on the
+# UoM-typed maturity. The threshold lives in <years>, so a stray
+# bare-Real comparison would be a typer error.
+fn class_of(a: Asset) : String = match a {
+  Stock(_, s)                      -> s
+  Bond(_, m) if m <= 2.0<years>    -> "bond <2y"
+  Bond(_, m) if m <= 10.0<years>   -> "bond 2-10y"
+  Bond(_, _)                       -> "bond >10y"
+  CashUsd                          -> "cash"
+  CashEur                          -> "cash"
+}
+
+# True if the position is quoted in EUR (only `CashEur` in this
+# demo, but the discriminator stays explicit so that adding a
+# EUR-quoted stock later is a one-arm change).
+fn is_eur(a: Asset) : Bool = match a {
+  CashEur                  -> true
+  _                        -> false
+}
+
+# ----- P&L classification -----
+
+# Percentage move from cost basis. Returns a bare Real (the unit
+# cancels in the ratio).
+fn pnl_pct(qty: Real, basis: Real, price: Real) : Real = {
+  let cost = qty * basis
+  if cost == 0.0 { 0.0 }
+  else { (qty * price - cost) / cost * 100.0 }
+}
+
+# Guard match on the percentage move. Threshold ±0.5% so the
+# colour doesn't flicker around a flat trade.
+fn band_of(pct: Real) : PnlBand = match pct {
+  p if p > 0.5         -> Gain
+  p if p < 0.0 - 0.5   -> Loss
+  _                    -> Neutral
+}
+
+# ----- valuation -----
+#
+# Per-position market value, expressed as Real<USD>. EUR-quoted
+# positions cross the FX rate explicitly:
+#   (qty * price)<EUR> * fx_eur_usd<USD/EUR>  ->  Real<USD>
+# The typer would refuse to add a bare EUR amount into the USD
+# total; the multiplication is the only legal bridge.
+
+fn value_usd(a: Asset, qty: Real, price: Real) : Real<USD> =
+  if is_eur(a) {
+    let v_eur : Real<EUR> = (qty * price) * 1.0<EUR>
+    v_eur * fx_eur_usd
+  } else {
+    (qty * price) * 1.0<USD>
+  }
+
+# ----- random-walk drift -----
+#
+# Each tick: each non-cash position drifts by a small random
+# percentage. Cash positions stay flat. The amplitude depends on
+# the asset variant: stocks wobble more than bonds, cash is
+# pinned. Returned as basis points per tick (1 bp = 0.01%).
+
+fn drift_bps(a: Asset) : Int = match a {
+  Stock(_, _)              -> 80     # ±0.80%
+  Bond(_, _)               -> 20     # ±0.20%
+  CashUsd                  -> 0
+  CashEur                  -> 0
+}
+
+# ============================================================
+#  2. ===== STATE ===============================================
+#
+#  In-memory portfolio: parallel arrays the simulation mutates.
+#  Builders for the seed data, the per-tick step that advances
+#  prices, and the sparkline ring buffer. Touches raylib only
+#  for `get_random_value`.
+# ============================================================
+
+const n_pos : Int = 8
+
+# ----- builders -----
+
+fn build_assets() : Array[Asset] {
+  let bs = array_make(n_pos, CashUsd)
+  bs[0] := Stock("AAPL",  "tech")
+  bs[1] := Stock("MSFT",  "tech")
+  bs[2] := Stock("KO",    "consumer")
+  bs[3] := Stock("XOM",   "energy")
+  bs[4] := Bond ("UST10", 10.0<years>)
+  bs[5] := Bond ("UST2",  2.0<years>)
+  bs[6] := CashUsd
+  bs[7] := CashEur
+  bs
+}
+
+# Quantities (in `shares` for stocks, face for bonds, currency
+# units for cash). Stored bare; the unit gets re-attached in
+# `value_usd` based on the asset variant.
+fn build_qty(out: Array[Real]) : Unit / Mutable {
+  out[0] := 100.0    # AAPL shares
+  out[1] := 80.0     # MSFT shares
+  out[2] := 200.0    # KO  shares
+  out[3] := 60.0     # XOM shares
+  out[4] := 50.0     # UST10 face $1k each
+  out[5] := 75.0     # UST2  face $1k each
+  out[6] := 12000.0  # USD cash
+  out[7] := 8500.0   # EUR cash
+}
+
+# Cost basis per position, in the position's quote currency.
+fn build_basis(out: Array[Real]) : Unit / Mutable {
+  out[0] := 175.0
+  out[1] := 410.0
+  out[2] := 60.0
+  out[3] := 105.0
+  out[4] := 1000.0
+  out[5] := 1000.0
+  out[6] := 1.0
+  out[7] := 1.0
+}
+
+fn reset_prices(basis: Array[Real], prices: Array[Real]) : Unit / Mutable =
+  reset_loop(basis, prices, 0)
+
+fn reset_loop(basis: Array[Real], prices: Array[Real], i: Int) : Unit / Mutable = {
+  if i >= n_pos { () }
+  else { prices[i] := basis[i]; reset_loop(basis, prices, i + 1) }
+}
+
+# ----- per-tick price step -----
+
+fn step_one(a: Asset, prices: Array[Real], i: Int) : Unit / Ffi + Mutable = {
+  let bps = drift_bps(a)
+  if bps > 0 {
+    let r = raylib.get_random_value(0 - bps, bps)
+    let factor = 1.0 + int_to_real(r) / 10000.0
+    prices[i] := prices[i] * factor
+  } else { () }
+}
+
+fn step_all(assets: Array[Asset], prices: Array[Real]) : Unit / Ffi + Mutable =
+  step_loop(assets, prices, 0)
+
+fn step_loop(assets: Array[Asset], prices: Array[Real], i: Int) : Unit / Ffi + Mutable = {
+  if i >= n_pos { () }
+  else { step_one(assets[i], prices, i); step_loop(assets, prices, i + 1) }
+}
+
+# ----- portfolio aggregation -----
+#
+# Walk all positions and write the per-position USD value into
+# `out`. Then `portfolio_total` reduces the array via the pipe
+# operators: `xs |> foldl(0.0, ...)`.
+
+fn build_values(assets: Array[Asset],
+                qty: Array[Real], prices: Array[Real],
+                out: Array[Real]) : Unit / Mutable =
+  values_loop(assets, qty, prices, out, 0)
+
+fn values_loop(assets: Array[Asset],
+               qty: Array[Real], prices: Array[Real],
+               out: Array[Real], i: Int) : Unit / Mutable = {
+  if i >= n_pos { () }
+  else {
+    let v = value_usd(assets[i], qty[i], prices[i])
+    out[i] := v / 1.0<USD>
+    values_loop(assets, qty, prices, out, i + 1)
+  }
+}
+
+fn array_to_list_real(xs: Array[Real]) : [Real] =
+  a2l_real_loop(xs, n_pos - 1, [])
+
+fn a2l_real_loop(xs: Array[Real], i: Int, acc: [Real]) : [Real] =
+  if i < 0 { acc } else { a2l_real_loop(xs, i - 1, [xs[i], ...acc]) }
+
+fn portfolio_total(values: Array[Real]) : Real<USD> = {
+  let total_bare = array_to_list_real(values)
+                    |> foldl(0.0, (acc, x) => acc + x)
+  total_bare * 1.0<USD>
+}
+
+# ----- sparkline ring buffer -----
+#
+# Per position, a ring of `spark_len` recent prices. Packed as a
+# single Array[Real] with stride = spark_len. `heads[i]` is the
+# next slot to write for position i.
+
+const spark_len : Int = 32
+
+fn record_spark(spark: Array[Real], heads: Array[Int],
+                i: Int, p: Real) : Unit / Mutable = {
+  let base = i * spark_len
+  let h = heads[i]
+  spark[base + h] := p
+  heads[i] := (h + 1) % spark_len
+}
+
+fn record_all(spark: Array[Real], heads: Array[Int],
+              prices: Array[Real]) : Unit / Mutable =
+  record_loop(spark, heads, prices, 0)
+
+fn record_loop(spark: Array[Real], heads: Array[Int],
+               prices: Array[Real], i: Int) : Unit / Mutable = {
+  if i >= n_pos { () }
+  else {
+    record_spark(spark, heads, i, prices[i])
+    record_loop(spark, heads, prices, i + 1)
+  }
+}
+
+# Find the (min, max) over the ring buffer for position i, so the
+# sparkline can scale to fit. We pass the bounds back through
+# Ref[Real] outputs (stdlib Mutable.ref_*).
+fn spark_bounds(spark: Array[Real], i: Int,
+                out_min: Ref[Real], out_max: Ref[Real]) : Unit / Mutable = {
+  let base = i * spark_len
+  Mutable.ref_set(out_min, spark[base])
+  Mutable.ref_set(out_max, spark[base])
+  bounds_loop(spark, base, 1, out_min, out_max)
+}
+
+fn bounds_loop(spark: Array[Real], base: Int, k: Int,
+               out_min: Ref[Real], out_max: Ref[Real]) : Unit / Mutable = {
+  if k >= spark_len { () }
+  else {
+    let v = spark[base + k]
+    if v != 0.0 {
+      if v < Mutable.ref_get(out_min) { Mutable.ref_set(out_min, v) } else { () }
+      if v > Mutable.ref_get(out_max) { Mutable.ref_set(out_max, v) } else { () }
+    } else { () }
+    bounds_loop(spark, base, k + 1, out_min, out_max)
+  }
+}
+
+# ============================================================
+#  3. ===== VIEW ================================================
+#
+#  raylib rendering. Reads from the state arrays; never mutates
+#  them. Layout constants and draw_* functions only live here.
+#  Anything that needs to "decide" something based on portfolio
+#  state delegates to the MODEL functions above (band_of,
+#  class_of, value_usd, ...) — the view code stays a thin
+#  formatter.
+# ============================================================
+
+# ----- screen + colour palette -----
+
+const width  : Int = 1000
+const height : Int = 640
+
+const col_bg     : Int = 0x0c1116FF
+const col_panel  : Int = 0x141a22FF
+const col_text   : Int = 0xeaedf3FF
+const col_dim    : Int = 0x6b7382FF
+const col_gain   : Int = 0x4ec9b0FF
+const col_loss   : Int = 0xf28b82FF
+const col_neutral: Int = 0xc4cad8FF
+
+fn band_color(b: PnlBand) : Int = match b {
+  Gain    -> col_gain
+  Loss    -> col_loss
+  Neutral -> col_neutral
+}
+
+# ----- row layout -----
+
+const row_h     : Int = 56
+const row_x     : Int = 24
+const row_w     : Int = 720
+const spark_x   : Int = 760
+const spark_y_h : Int = 32
+const spark_w   : Int = 200
+
+fn draw_row(i: Int,
+            assets: Array[Asset],
+            qty: Array[Real],
+            basis: Array[Real],
+            prices: Array[Real]) : Unit / Ffi = {
+  let y = 80 + i * row_h
+  let a = assets[i]
+  let q = qty[i]
+  let b = basis[i]
+  let p = prices[i]
+  let pct = pnl_pct(q, b, p)
+  let col = band_color(band_of(pct))
+
+  raylib.draw_rectangle(row_x, y, row_w + spark_w + 24, row_h - 8, col_panel)
+
+  raylib.draw_text(ticker_of(a), row_x + 16, y + 8, 22, col_text)
+  raylib.draw_text(class_of(a),  row_x + 16, y + 32, 12, col_dim)
+
+  raylib.draw_text("qty",   row_x + 160, y + 8, 12, col_dim)
+  raylib.draw_text(real_to_string(q), row_x + 160, y + 24, 16, col_text)
+
+  raylib.draw_text("basis", row_x + 280, y + 8, 12, col_dim)
+  raylib.draw_text(real_to_string(b), row_x + 280, y + 24, 16, col_text)
+
+  raylib.draw_text("price", row_x + 400, y + 8, 12, col_dim)
+  raylib.draw_text(real_to_string(p), row_x + 400, y + 24, 16, col_text)
+
+  raylib.draw_text("P&L %", row_x + 540, y + 8, 12, col_dim)
+  raylib.draw_text(real_to_string(pct), row_x + 540, y + 24, 18, col)
+}
+
+fn draw_rows(assets: Array[Asset],
+             qty: Array[Real], basis: Array[Real],
+             prices: Array[Real], i: Int) : Unit / Ffi = {
+  if i >= n_pos { () }
+  else {
+    draw_row(i, assets, qty, basis, prices)
+    draw_rows(assets, qty, basis, prices, i + 1)
+  }
+}
+
+# ----- sparklines -----
+
+fn draw_sparkline(spark: Array[Real], heads: Array[Int],
+                  i: Int) : Unit / Ffi + Mutable = {
+  let y0 = 80 + i * row_h + 12
+  let lo = Mutable.ref_make(0.0)
+  let hi = Mutable.ref_make(0.0)
+  spark_bounds(spark, i, lo, hi)
+  let span = Mutable.ref_get(hi) - Mutable.ref_get(lo)
+  if span <= 0.000001 { () }
+  else {
+    spark_seg_loop(spark, heads, i, lo, span, y0, 0)
+  }
+}
+
+# Walk pairs of points in arrival order and stroke a segment
+# between each pair. Arrival order = (head, head+1, …,
+# head + spark_len - 1) modulo spark_len.
+fn spark_seg_loop(spark: Array[Real], heads: Array[Int],
+                  i: Int, lo: Ref[Real], span: Real,
+                  y0: Int, k: Int) : Unit / Ffi + Mutable = {
+  if k >= spark_len - 1 { () }
+  else {
+    let base = i * spark_len
+    let head = heads[i]
+    let off1 = (head + k) % spark_len
+    let off2 = (head + k + 1) % spark_len
+    let v1 = spark[base + off1]
+    let v2 = spark[base + off2]
+    if v1 != 0.0 and v2 != 0.0 {
+      let lo_v = Mutable.ref_get(lo)
+      let x1 = spark_x + k * spark_w / (spark_len - 1)
+      let x2 = spark_x + (k + 1) * spark_w / (spark_len - 1)
+      let y1 = y0 + spark_y_h - real_to_int((v1 - lo_v) / span * int_to_real(spark_y_h))
+      let y2 = y0 + spark_y_h - real_to_int((v2 - lo_v) / span * int_to_real(spark_y_h))
+      raylib.draw_line(x1, y1, x2, y2, col_text)
+    } else { () }
+    spark_seg_loop(spark, heads, i, lo, span, y0, k + 1)
+  }
+}
+
+fn draw_sparklines(spark: Array[Real], heads: Array[Int]) : Unit / Ffi + Mutable =
+  spark_lines_loop(spark, heads, 0)
+
+fn spark_lines_loop(spark: Array[Real], heads: Array[Int],
+                    i: Int) : Unit / Ffi + Mutable = {
+  if i >= n_pos { () }
+  else {
+    draw_sparkline(spark, heads, i)
+    spark_lines_loop(spark, heads, i + 1)
+  }
+}
+
+# ----- header / footer -----
+
+fn draw_header(paused: Bool) : Unit / Ffi = {
+  raylib.draw_text("Portfolio  /  kaikai + raylib", 24, 18, 26, col_text)
+  raylib.draw_text("SPACE pausa  R reset  ESC salir",
+                   24, 50, 14, col_dim)
+  if paused {
+    raylib.draw_text("PAUSADO", 360, 22, 18, col_neutral)
+  } else { () }
+}
+
+fn draw_footer(total_now: Real<USD>, total_basis: Real<USD>,
+               fx: Real<USD_per_EUR>) : Unit / Ffi = {
+  let y = height - 70
+  raylib.draw_rectangle(24, y, width - 48, 50, col_panel)
+
+  let now  = total_now / 1.0<USD>
+  let base = total_basis / 1.0<USD>
+  let pnl  = now - base
+  let pct  = if base == 0.0 { 0.0 } else { pnl / base * 100.0 }
+  let col  = band_color(band_of(pct))
+
+  raylib.draw_text("Total (USD):", 40, y + 16, 16, col_dim)
+  raylib.draw_text(real_to_string(now), 160, y + 12, 22, col_text)
+
+  raylib.draw_text("P&L:", 360, y + 16, 16, col_dim)
+  raylib.draw_text(real_to_string(pnl), 410, y + 12, 22, col)
+  raylib.draw_text(real_to_string(pct), 540, y + 16, 16, col)
+
+  raylib.draw_text("FX EUR/USD:", 700, y + 16, 14, col_dim)
+  raylib.draw_text(real_to_string(fx / 1.0<USD_per_EUR>), 810, y + 16, 16, col_text)
+}
+
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+#
+#  Frame loop and main. Pulls the three layers together: input
+#  + tick on the STATE side, draw_* on the VIEW side.
+# ============================================================
+
+const key_space : Int = 32
+const key_r     : Int = 82
+
+# `tick_count` paces the random walk: we step prices once every
+# `tick_period` frames so the dashboard reads as a slow ticker
+# rather than a strobe.
+const tick_period : Int = 16
+
+fn frame_loop(assets: Array[Asset],
+              qty: Array[Real],
+              basis: Array[Real],
+              prices: Array[Real],
+              spark: Array[Real],
+              spark_heads: Array[Int],
+              tick_count: Ref[Int]) : Unit / Ffi + Mutable = {
+  var paused = false
+  let values = array_make(n_pos, 0.0)
+
+  until { raylib.window_should_close() } {
+    # ---- input ----
+    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_r) {
+      reset_prices(basis, prices)
+      Mutable.ref_set(tick_count, 0)
+    } else { () }
+
+    # ---- STATE: tick the simulation ----
+    if not @paused {
+      let t = Mutable.ref_get(tick_count) + 1
+      Mutable.ref_set(tick_count, t)
+      if t % tick_period == 0 {
+        step_all(assets, prices)
+        record_all(spark, spark_heads, prices)
+      } else { () }
+    } else { () }
+
+    # ---- MODEL: aggregate ----
+    build_values(assets, qty, prices, values)
+    let total_now = portfolio_total(values)
+    build_values(assets, qty, basis, values)
+    let total_basis = portfolio_total(values)
+
+    # ---- VIEW: render ----
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_header(@paused)
+    draw_rows(assets, qty, basis, prices, 0)
+    draw_sparklines(spark, spark_heads)
+    draw_footer(total_now, total_basis, fx_eur_usd)
+    raylib.end_drawing()
+  }
+}
+
+fn main() : Unit / Ffi + Mutable = {
+  raylib.set_random_seed(42)
+
+  let assets = build_assets()
+  let qty = array_make(n_pos, 0.0)
+  build_qty(qty)
+  let basis = array_make(n_pos, 0.0)
+  build_basis(basis)
+  let prices = array_make(n_pos, 0.0)
+  reset_prices(basis, prices)
+
+  let spark = array_make(n_pos * spark_len, 0.0)
+  let spark_heads = array_make(n_pos, 0)
+  let tick_count = Mutable.ref_make(0)
+
+  raylib.init_window(width, height, "Portfolio / kaikai + raylib")
+  raylib.set_target_fps(60)
+  frame_loop(assets, qty, basis, prices, spark, spark_heads, tick_count)
+  raylib.close_window()
+}

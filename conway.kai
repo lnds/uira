@@ -57,7 +57,7 @@ fn neighbours(g: Array[Bool], c: Int, r: Int) : Int =
   b2i(read_at(g, c + 1, r + 1))
 
 # Compute next state into `dst` from `src`.
-fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit {
+fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit / Mutable {
   var r = 0
   repeat(rows) {
     var c = 0
@@ -79,7 +79,7 @@ fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit {
 
 # ----- seeding -----
 
-fn clear_grid(g: Array[Bool]) : Unit {
+fn clear_grid(g: Array[Bool]) : Unit / Mutable {
   var i = 0
   repeat(grid_len) {
     g[@i] := false
@@ -88,7 +88,7 @@ fn clear_grid(g: Array[Bool]) : Unit {
 }
 
 # Set cell, ignoring if out of bounds (we always pass in-range here).
-fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit {
+fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit / Mutable {
   if c >= 0 and c < cols and r >= 0 and r < rows {
     g[idx(c, r)] := true
   }
@@ -97,10 +97,10 @@ fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit {
 # Stamp a pattern given as parallel offset lists (col_offset[i],
 # row_offset[i]) anchored at (c0, r0). Parallel lists avoid the
 # Pair type which lives in stdlib (we run with KAI_NO_STDLIB).
-fn stamp(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit =
+fn stamp(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit / Mutable =
   stamp_loop(g, c0, r0, dcs, drs)
 
-fn stamp_loop(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit {
+fn stamp_loop(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit / Mutable {
   match dcs {
     [] -> ()
     [dc, ...rest_c] -> match drs {
@@ -116,7 +116,7 @@ fn stamp_loop(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit {
 # Seed the grid with several recognisable patterns. Picked for the
 # live demo: a few gliders flying across, an r-pentomino that
 # explodes into chaos, and a stable block as a reference point.
-fn seed(g: Array[Bool]) : Unit {
+fn seed(g: Array[Bool]) : Unit / Mutable {
   clear_grid(g)
 
   # Glider, top-left, heading down-right
@@ -191,7 +191,7 @@ fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi {
   var frame = 0
   var paused = false
 
-  until(() => raylib.window_should_close()) {
+  until { raylib.window_should_close() } {
     # --- input ---
     if raylib.is_key_pressed(key_space) { paused := not @paused }
 

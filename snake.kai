@@ -51,11 +51,7 @@ const col_dim       : Int = 0x808090FF
 # ----- ref-cell helpers (kaikai's vars don't pass by reference,
 # so we lift mutable scalars into single-cell arrays) -----
 
-fn icell(init: Int) : Array[Int] {
-  let a = array_make(1, 0)
-  a[0] := init
-  a
-}
+fn cell[T](init: T) : Array[T] = array_make(1, init)
 
 # ----- random apple placement -----
 #
@@ -66,7 +62,7 @@ fn place_apple(
   body_x: Array[Int], body_y: Array[Int],
   head_idx: Int, tail_idx: Int,
   apple_x: Array[Int], apple_y: Array[Int]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   let ax = raylib.get_random_value(0, cols - 1)
   let ay = raylib.get_random_value(0, rows - 1)
   if cell_in_body(body_x, body_y, head_idx, tail_idx, ax, ay) {
@@ -106,7 +102,7 @@ fn reset(
   direction: Array[Int], pending_dir: Array[Int],
   apple_x: Array[Int], apple_y: Array[Int],
   score: Array[Int], game_over: Array[Int]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   # Snake starts as 3 cells stacked horizontally near the centre,
   # facing right. Buffer slots 0, 1, 2 hold (tail, mid, head).
   body_x[0] := 14; body_y[0] := 12
@@ -126,7 +122,7 @@ fn reset(
 # Buffer the next direction; only commit it on the step boundary
 # so a fast double-tap can't reverse the snake into itself.
 
-fn read_input(direction: Array[Int], pending_dir: Array[Int]) : Unit / Ffi {
+fn read_input(direction: Array[Int], pending_dir: Array[Int]) : Unit / Ffi + Mutable {
   if raylib.is_key_pressed(key_left) {
     if direction[0] != dir_right { pending_dir[0] := dir_left}
   }
@@ -161,7 +157,7 @@ fn step(
   direction: Array[Int], pending_dir: Array[Int],
   apple_x: Array[Int], apple_y: Array[Int],
   score: Array[Int], game_over: Array[Int]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   direction[0] := pending_dir[0]
   let hx = body_x[head_idx[0]] + dx_of(direction[0])
   let hy = body_y[head_idx[0]] + dy_of(direction[0])
@@ -288,10 +284,10 @@ fn frame_loop(
   direction: Array[Int], pending_dir: Array[Int],
   apple_x: Array[Int], apple_y: Array[Int],
   score: Array[Int], game_over: Array[Int]
-) : Unit / Ffi {
+) : Unit / Ffi + Mutable {
   var frame = 0
 
-  until(() => raylib.window_should_close()) {
+  until { raylib.window_should_close() } {
     # Restart on R, even mid-game.
     if raylib.is_key_pressed(key_r) {
       reset(body_x, body_y, head_idx, tail_idx,
@@ -325,14 +321,14 @@ fn main() : Unit / Ffi {
 
   let body_x = array_make(max_body, 0)
   let body_y = array_make(max_body, 0)
-  let head_idx = icell(0)
-  let tail_idx = icell(0)
-  let direction = icell(dir_right)
-  let pending_dir = icell(dir_right)
-  let apple_x = icell(8)
-  let apple_y = icell(12)
-  let score = icell(0)
-  let game_over = icell(0)
+  let head_idx = cell(0)
+  let tail_idx = cell(0)
+  let direction = cell(dir_right)
+  let pending_dir = cell(dir_right)
+  let apple_x = cell(8)
+  let apple_y = cell(12)
+  let score = cell(0)
+  let game_over = cell(0)
 
   raylib.init_window(800, 600, "Snake / kaikai + raylib")
   raylib.set_target_fps(60)

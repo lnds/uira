@@ -149,7 +149,7 @@ kaikai's FFI v1 supports primitive types only and rejects
 pass-by-value structs. raylib takes `Color` and `Vector2` by
 value almost everywhere. The shim
 ([`ffi/raylib_shim.c`](ffi/raylib_shim.c)) bridges the two
-worlds: every `kai_*` function takes scalars (an `int64_t`
+worlds: every exported function takes scalars (an `int64_t`
 packed `0xRRGGBBAA` for colours, separate `Real`s for vector
 components) and rebuilds the aggregates internally.
 
@@ -163,15 +163,21 @@ The build pipeline:
                   ffi/raylib_shim.h (forward decls, -include'd)
 ```
 
-The kaikai-side bindings ([`ffi/raylib.kai`](ffi/raylib.kai))
-declare each shim function as a private `[<extern_c>] axiom`
-and re-expose it through a thin `pub fn` wrapper. The wrapper
-layer exists because `pub axiom` does not currently re-export
-across modules
-([lnds/kaikai#244](https://github.com/lnds/kaikai/issues/244)).
-With `-O2`, clang inlines the wrapper and the indirection is
-free at runtime — `nm` confirms no `kai_raylib__*` symbols
-survive in the final binary.
+Each kaikai binding ([`ffi/raylib.kai`](ffi/raylib.kai)) is an
+`extern "C" pub fn` with a name override
+([issues #260 / #261](https://github.com/lnds/kaikai/pull/272))
+that decouples the kaikai-side identifier from the C symbol:
+
+```kaikai
+extern "C"("kai_raylib_init_window")
+pub fn init_window(w: Int, h: Int, title: String) : Unit / Ffi
+```
+
+The kaikai call site reads `raylib.init_window(...)`; the
+linker resolves `kai_raylib_init_window`. The prefix keeps
+the C global namespace tidy. Math axioms (`sin`, `cos`,
+`atan2`, `sqrt`) skip the override and link directly to libm
+under their bare names — no shim entry needed.
 
 ## Demos
 
@@ -235,9 +241,13 @@ so a fast 180° doesn't self-collide.
   `int64_t` and vectors get split into two `Real`s. A future
   kaikai release with FFI v2 (struct-by-value, out-params) will
   let bindings call `DrawCircleV(Vector2, ...)` etc. directly.
-- **`pub axiom` doesn't re-export** ([kaikai#244](https://github.com/lnds/kaikai/issues/244)).
-  Workaround in this repo: each axiom is private to `ffi/raylib.kai`
-  and a `pub fn` wraps it. Removable once #244 lands.
+- **`solar` requires `KAI_NO_STDLIB=1`.** A typer regression
+  ([kaikai#269](https://github.com/lnds/kaikai/issues/269))
+  triggered by `const x : T = V` plus the auto-loaded stdlib
+  prelude makes `solar.kai` fail to typecheck. The Makefile
+  builds it with `KAI_NO_STDLIB=1` until the fix lands; the
+  cost is losing access to `filter` / `map` / the `|` and `||`
+  pipe sugars in that one demo.
 
 ## License
 
