@@ -21,10 +21,10 @@ SHIM_H := ffi/raylib_shim.h
 KAI_CFLAGS := -std=c99 -O2 -Wno-unused-function -Wno-unused-variable \
               -include $(SHIM_H) $(RAYLIB_CFLAGS) $(SHIM_C) $(RAYLIB_LIBS)
 
-.PHONY: all conway boids mandelbrot snake kaikai solar portfolio \
-        run-conway run-boids run-mandelbrot run-snake run-kaikai run-solar run-portfolio clean
+.PHONY: all conway boids mandelbrot snake kaikai solar portfolio orderbook \
+        run-conway run-boids run-mandelbrot run-snake run-kaikai run-solar run-portfolio run-orderbook clean
 
-all: conway boids mandelbrot snake kaikai solar portfolio
+all: conway boids mandelbrot snake kaikai solar portfolio orderbook
 
 conway: build/conway
 
@@ -87,3 +87,11 @@ run-portfolio: build/portfolio
 
 clean:
 	rm -rf build
+
+orderbook: build/orderbook
+
+build/orderbook: orderbook.kai ffi/raylib.kai $(SHIM_C) $(SHIM_H) | build
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build orderbook.kai -o $@
+
+run-orderbook: build/orderbook
+	./build/orderbook

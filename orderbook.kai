@@ -1,0 +1,696 @@
+# Order book — kaikai + raylib showcase
+#
+# A live limit-order book with price-time priority matching.
+# Two fiber producers generate random buy / sell orders around
+# the mid price; a matching-engine fiber drains a typed
+# `Actor[Order]` mailbox, crosses orders against the opposite
+# side of the book, and writes fills to a shared ring buffer.
+# The main fiber runs the raylib frame loop and yields each
+# frame so the scheduler can interleave the producers and the
+# engine in between paints.
+#
+# Four layers, marked with banners:
+#
+#   1. ===== MODEL =====   types (Side, Order), pure book ops
+#                          (insert into a sorted side, cross
+#                          against the opposite side). No I/O.
+#   2. ===== STATE =====   the parallel arrays that hold the
+#                          book + the fills ring + stats. The
+#                          producers and matching engine mutate
+#                          these; the renderer reads.
+#   3. ===== VIEW  =====   raylib rendering. Reads state; never
+#                          mutates. Layout constants only here.
+#   4. ===== ACTORS ====   the producer / matching-engine fibers
+#                          and the orchestration in `main`.
+#
+# Features showcased:
+#
+#   - Actors + fibers (m8.x):     Two producer fibers + one
+#                                 matching-engine fiber drive
+#                                 the simulation. The frame loop
+#                                 yields each frame, so the
+#                                 cooperative scheduler interleaves
+#                                 producers and engine in between
+#                                 raylib paints.
+#   - Typed mailbox `Actor[Msg]`: the engine receives `Order`
+#                                 values; the typer rejects any
+#                                 `Actor.send` of the wrong shape.
+#   - Sum types + match guards:   type Side = Buy | Sell;
+#                                 type Order = LimitOrder(...);
+#                                 the matching kernel is one
+#                                 nested match away from the
+#                                 textbook description.
+#   - Mutable / Ref:              shared book state + fill ring
+#                                 sit in Array + Ref cells; the
+#                                 := / @ sugar lifts the noise.
+#
+# Controles:
+#   SPACE   pausa / reanuda la simulación
+#   R       limpia el book y los fills
+#   F       acelera el ritmo de órdenes
+#   S       lo frena
+#   ESC     salir
+
+import ffi.raylib
+import loop
+import actor
+import spawn
+
+# ============================================================
+#  1. ===== MODEL ===============================================
+#
+#  Pure types and book operations. Prices are in cents (Int) so
+#  we sidestep floating-point comparison drift. Quantities are
+#  whole shares.
+# ============================================================
+
+type Side = Buy | Sell
+
+type Order = LimitOrder(Side, Int, Int)   # side, price, qty
+
+const n_levels    : Int = 16     # top-of-book depth shown / kept
+const fills_len   : Int = 64     # fills ring buffer length
+
+# ----- side accessors -----
+
+fn side_label(s: Side) : String = match s {
+  Buy  -> "BUY"
+  Sell -> "SELL"
+}
+
+fn side_to_int(s: Side) : Int = match s {
+  Buy  -> 0
+  Sell -> 1
+}
+
+fn int_to_side(n: Int) : Side = if n == 0 { Buy } else { Sell }
+
+# True iff `incoming` (a buy at `bp`) crosses against an existing
+# ask at `ap` — i.e. the buy is willing to pay at least the ask.
+fn buy_crosses(bp: Int, ap: Int) : Bool = bp >= ap
+
+# Symmetric: a sell at `sp` crosses an existing bid at `bp` if
+# `sp <= bp`.
+fn sell_crosses(sp: Int, bp: Int) : Bool = sp <= bp
+
+# ============================================================
+#  2. ===== STATE ===============================================
+#
+#  Parallel-array book: `bids` is sorted DESCENDING by price
+#  (best bid at index 0), `asks` is sorted ASCENDING (best ask
+#  at index 0). `n_bids` / `n_asks` track the populated prefix.
+#  Match removes from the top, insert shifts down to keep order.
+#
+#  Fills land in a ring buffer the renderer scrolls.
+# ============================================================
+
+# ----- book operations -----
+#
+# Insert (price, qty) into a sorted side. `descending` controls
+# the comparison direction so the same routine handles bids
+# (descending) and asks (ascending).
+fn insert_level(prices: Array[Int], qtys: Array[Int],
+                n: Ref[Int], price: Int, qty: Int,
+                descending: Bool) : Unit / Mutable = {
+  # Find the position at which `price` would land. If a level at
+  # exactly `price` already exists, we just bump its qty.
+  let pos = find_pos(prices, @n, price, descending, 0)
+  if pos < @n and prices[pos] == price {
+    qtys[pos] := qtys[pos] + qty
+  } else if @n >= n_levels {
+    # Book full at this side: drop the worst level (last slot).
+    if would_keep(prices, @n, price, descending) {
+      shift_right(prices, qtys, pos, @n - 1)
+      prices[pos] := price
+      qtys[pos] := qty
+    } else { () }
+  } else {
+    shift_right(prices, qtys, pos, @n)
+    prices[pos] := price
+    qtys[pos] := qty
+    n := @n + 1
+  }
+}
+
+# Find the insertion position for `price` in a sorted prefix of
+# length `n`, given the sort direction.
+fn find_pos(prices: Array[Int], n: Int, price: Int,
+            descending: Bool, i: Int) : Int = {
+  if i >= n { i }
+  else if descending {
+    if price >= prices[i] { i } else { find_pos(prices, n, price, descending, i + 1) }
+  } else {
+    if price <= prices[i] { i } else { find_pos(prices, n, price, descending, i + 1) }
+  }
+}
+
+# Would inserting `price` keep it inside the n_levels window? For
+# a descending side, only if it beats the current worst (last)
+# price.
+fn would_keep(prices: Array[Int], n: Int, price: Int,
+              descending: Bool) : Bool = {
+  if n == 0 { true }
+  else if descending { price > prices[n - 1] }
+  else               { price < prices[n - 1] }
+}
+
+# Shift slots [pos, end) one slot to the right, growing the
+# array's populated prefix by 1 at index `pos`.
+fn shift_right(prices: Array[Int], qtys: Array[Int],
+               pos: Int, end: Int) : Unit / Mutable = {
+  if end <= pos { () }
+  else {
+    prices[end] := prices[end - 1]
+    qtys[end]   := qtys[end - 1]
+    shift_right(prices, qtys, pos, end - 1)
+  }
+}
+
+# Remove the level at index 0 (top of book) by shifting the
+# remaining levels left. Used when a top level is fully consumed.
+fn shift_left(prices: Array[Int], qtys: Array[Int],
+              n: Ref[Int]) : Unit / Mutable = {
+  let limit = @n - 1
+  shift_left_loop(prices, qtys, 0, limit)
+  n := limit
+}
+
+fn shift_left_loop(prices: Array[Int], qtys: Array[Int],
+                   i: Int, limit: Int) : Unit / Mutable = {
+  if i >= limit { () }
+  else {
+    prices[i] := prices[i + 1]
+    qtys[i]   := qtys[i + 1]
+    shift_left_loop(prices, qtys, i + 1, limit)
+  }
+}
+
+# ----- fills ring -----
+
+fn record_fill(fill_prices: Array[Int], fill_qtys: Array[Int],
+               fill_sides: Array[Int], fill_seqs: Array[Int],
+               head: Ref[Int], count: Ref[Int],
+               seq: Int, s: Side, price: Int, qty: Int) : Unit / Mutable = {
+  let h = @head
+  fill_prices[h] := price
+  fill_qtys[h]   := qty
+  fill_sides[h]  := side_to_int(s)
+  fill_seqs[h]   := seq
+  head := (h + 1) % fills_len
+  if @count < fills_len { count := @count + 1 } else { () }
+}
+
+# ----- matching kernel -----
+#
+# An incoming `BUY p q` walks the top of the asks: while the
+# best ask <= p and we still have qty, consume the ask (remove
+# the top level if it goes to zero, otherwise decrement). The
+# residual is added as a passive bid. Symmetric for `SELL`.
+
+fn match_buy(price: Int, qty: Int,
+             bid_prices: Array[Int], bid_qtys: Array[Int], n_bids: Ref[Int],
+             ask_prices: Array[Int], ask_qtys: Array[Int], n_asks: Ref[Int],
+             fill_prices: Array[Int], fill_qtys: Array[Int],
+             fill_sides: Array[Int], fill_seqs: Array[Int],
+             fhead: Ref[Int], fcount: Ref[Int],
+             total_volume: Ref[Int], total_fills: Ref[Int],
+             seq: Int) : Unit / Mutable = {
+  if qty <= 0 { () }
+  else if @n_asks == 0 {
+    insert_level(bid_prices, bid_qtys, n_bids, price, qty, true)
+  } else if not buy_crosses(price, ask_prices[0]) {
+    insert_level(bid_prices, bid_qtys, n_bids, price, qty, true)
+  } else {
+    let take = if qty <= ask_qtys[0] { qty } else { ask_qtys[0] }
+    let fill_price = ask_prices[0]
+    record_fill(fill_prices, fill_qtys, fill_sides, fill_seqs,
+                fhead, fcount, seq, Buy, fill_price, take)
+    total_volume := @total_volume + take
+    total_fills  := @total_fills + 1
+    if take == ask_qtys[0] {
+      shift_left(ask_prices, ask_qtys, n_asks)
+    } else {
+      ask_qtys[0] := ask_qtys[0] - take
+    }
+    match_buy(price, qty - take,
+              bid_prices, bid_qtys, n_bids,
+              ask_prices, ask_qtys, n_asks,
+              fill_prices, fill_qtys, fill_sides, fill_seqs,
+              fhead, fcount, total_volume, total_fills, seq)
+  }
+}
+
+fn match_sell(price: Int, qty: Int,
+              bid_prices: Array[Int], bid_qtys: Array[Int], n_bids: Ref[Int],
+              ask_prices: Array[Int], ask_qtys: Array[Int], n_asks: Ref[Int],
+              fill_prices: Array[Int], fill_qtys: Array[Int],
+              fill_sides: Array[Int], fill_seqs: Array[Int],
+              fhead: Ref[Int], fcount: Ref[Int],
+              total_volume: Ref[Int], total_fills: Ref[Int],
+              seq: Int) : Unit / Mutable = {
+  if qty <= 0 { () }
+  else if @n_bids == 0 {
+    insert_level(ask_prices, ask_qtys, n_asks, price, qty, false)
+  } else if not sell_crosses(price, bid_prices[0]) {
+    insert_level(ask_prices, ask_qtys, n_asks, price, qty, false)
+  } else {
+    let take = if qty <= bid_qtys[0] { qty } else { bid_qtys[0] }
+    let fill_price = bid_prices[0]
+    record_fill(fill_prices, fill_qtys, fill_sides, fill_seqs,
+                fhead, fcount, seq, Sell, fill_price, take)
+    total_volume := @total_volume + take
+    total_fills  := @total_fills + 1
+    if take == bid_qtys[0] {
+      shift_left(bid_prices, bid_qtys, n_bids)
+    } else {
+      bid_qtys[0] := bid_qtys[0] - take
+    }
+    match_sell(price, qty - take,
+               bid_prices, bid_qtys, n_bids,
+               ask_prices, ask_qtys, n_asks,
+               fill_prices, fill_qtys, fill_sides, fill_seqs,
+               fhead, fcount, total_volume, total_fills, seq)
+  }
+}
+
+# Process one incoming order.
+fn process_order(o: Order,
+                 bid_prices: Array[Int], bid_qtys: Array[Int], n_bids: Ref[Int],
+                 ask_prices: Array[Int], ask_qtys: Array[Int], n_asks: Ref[Int],
+                 fill_prices: Array[Int], fill_qtys: Array[Int],
+                 fill_sides: Array[Int], fill_seqs: Array[Int],
+                 fhead: Ref[Int], fcount: Ref[Int],
+                 total_volume: Ref[Int], total_fills: Ref[Int],
+                 seq: Int) : Unit / Mutable = match o {
+  LimitOrder(Buy, p, q) ->
+    match_buy(p, q, bid_prices, bid_qtys, n_bids,
+                    ask_prices, ask_qtys, n_asks,
+                    fill_prices, fill_qtys, fill_sides, fill_seqs,
+                    fhead, fcount, total_volume, total_fills, seq)
+  LimitOrder(Sell, p, q) ->
+    match_sell(p, q, bid_prices, bid_qtys, n_bids,
+                     ask_prices, ask_qtys, n_asks,
+                     fill_prices, fill_qtys, fill_sides, fill_seqs,
+                     fhead, fcount, total_volume, total_fills, seq)
+}
+
+fn clear_book(n_bids: Ref[Int], n_asks: Ref[Int],
+              fhead: Ref[Int], fcount: Ref[Int]) : Unit / Mutable = {
+  n_bids := 0
+  n_asks := 0
+  fhead  := 0
+  fcount := 0
+}
+
+# ============================================================
+#  3. ===== VIEW ================================================
+#
+#  raylib rendering: the two book sides as ladders, last fills as
+#  a panel, footer with stats. Reads state; never mutates.
+# ============================================================
+
+const width  : Int = 1000
+const height : Int = 640
+
+const col_bg     : Int = 0x0a0e14FF
+const col_panel  : Int = 0x121822FF
+const col_text   : Int = 0xeaedf3FF
+const col_dim    : Int = 0x6b7382FF
+const col_bid    : Int = 0x4ec9b0FF
+const col_ask    : Int = 0xf28b82FF
+const col_grid   : Int = 0x1f2632FF
+const col_accent : Int = 0xfca311FF
+
+fn side_color(s: Side) : Int = match s {
+  Buy  -> col_bid
+  Sell -> col_ask
+}
+
+# ----- book ladder layout -----
+
+const bid_x     : Int = 40
+const ask_x     : Int = 320
+const ladder_y  : Int = 100
+const row_h     : Int = 22
+const ladder_w  : Int = 240
+const bar_h     : Int = 16
+
+# Largest qty across the populated levels of one side; used to
+# scale the volume bars.
+fn max_qty(qtys: Array[Int], n: Int, i: Int, acc: Int) : Int = {
+  if i >= n { acc }
+  else {
+    let q = qtys[i]
+    let nx = if q > acc { q } else { acc }
+    max_qty(qtys, n, i + 1, nx)
+  }
+}
+
+fn draw_book_side(prices: Array[Int], qtys: Array[Int], n: Int,
+                  x: Int, color: Int, label: String) : Unit / Ffi = {
+  raylib.draw_text(label, x, ladder_y - 24, 16, color)
+  raylib.draw_text("price    qty   bar", x, ladder_y - 6, 11, col_dim)
+  let m = max_qty(qtys, n, 0, 1)
+  draw_book_rows(prices, qtys, n, x, color, m, 0)
+}
+
+fn draw_book_rows(prices: Array[Int], qtys: Array[Int], n: Int,
+                  x: Int, color: Int, m: Int, i: Int) : Unit / Ffi = {
+  if i >= n { () }
+  else {
+    let y = ladder_y + 12 + i * row_h
+    raylib.draw_rectangle(x - 4, y - 2, ladder_w + 8, row_h, col_panel)
+    # Price (we display dollars with 2 decimals — divide cents/100).
+    let dollars = prices[i] / 100
+    let cents   = prices[i] % 100
+    let p_str = int_to_string(dollars) ++ "." ++ int_to_string(cents)
+    raylib.draw_text(p_str, x, y, 14, col_text)
+    raylib.draw_text(int_to_string(qtys[i]), x + 64, y, 14, col_dim)
+    # Volume bar — width proportional to qty / max_qty.
+    let bar_w = qtys[i] * (ladder_w - 130) / m
+    raylib.draw_rectangle(x + 120, y + 2, bar_w, bar_h - 4, color)
+  }
+  if i < n {
+    draw_book_rows(prices, qtys, n, x, color, m, i + 1)
+  } else { () }
+}
+
+# ----- spread / mid -----
+
+fn draw_spread(bid_prices: Array[Int], ask_prices: Array[Int],
+               n_bids: Int, n_asks: Int) : Unit / Ffi = {
+  let y = 40
+  if n_bids > 0 and n_asks > 0 {
+    let best_bid = bid_prices[0]
+    let best_ask = ask_prices[0]
+    let mid = (best_bid + best_ask) / 2
+    let spread = best_ask - best_bid
+    let mid_d = mid / 100
+    let mid_c = mid % 100
+    let sp_d = spread / 100
+    let sp_c = spread % 100
+
+    raylib.draw_text("MID", 40, y - 2, 12, col_dim)
+    raylib.draw_text(int_to_string(mid_d) ++ "." ++ int_to_string(mid_c),
+                     40, y + 12, 22, col_accent)
+    raylib.draw_text("SPREAD", 220, y - 2, 12, col_dim)
+    raylib.draw_text(int_to_string(sp_d) ++ "." ++ int_to_string(sp_c),
+                     220, y + 12, 22, col_text)
+  } else {
+    raylib.draw_text("(book warming up...)", 40, y + 8, 16, col_dim)
+  }
+}
+
+# ----- fills panel -----
+
+const fills_x  : Int = 620
+const fills_y  : Int = 100
+const fills_w  : Int = 340
+const fills_rh : Int = 18
+
+fn draw_fills(fill_prices: Array[Int], fill_qtys: Array[Int],
+              fill_sides: Array[Int], fill_seqs: Array[Int],
+              fhead: Int, fcount: Int) : Unit / Ffi = {
+  raylib.draw_text("recent fills", fills_x, fills_y - 24, 16, col_text)
+  raylib.draw_text("# seq    side  qty   price",
+                   fills_x, fills_y - 6, 11, col_dim)
+  let max_rows = 22
+  let rows = if fcount < max_rows { fcount } else { max_rows }
+  draw_fills_rows(fill_prices, fill_qtys, fill_sides, fill_seqs,
+                  fhead, rows, 0)
+}
+
+fn draw_fills_rows(fill_prices: Array[Int], fill_qtys: Array[Int],
+                   fill_sides: Array[Int], fill_seqs: Array[Int],
+                   fhead: Int, rows: Int, k: Int) : Unit / Ffi = {
+  if k >= rows { () }
+  else {
+    let raw = fhead - 1 - k
+    let idx = if raw < 0 { raw + fills_len } else { raw }
+    let s = int_to_side(fill_sides[idx])
+    let y = fills_y + 12 + k * fills_rh
+    raylib.draw_rectangle(fills_x - 4, y - 2, fills_w + 8, fills_rh, col_panel)
+    raylib.draw_text(int_to_string(fill_seqs[idx]), fills_x, y, 12, col_dim)
+    raylib.draw_text(side_label(s), fills_x + 60, y, 12, side_color(s))
+    raylib.draw_text(int_to_string(fill_qtys[idx]), fills_x + 110, y, 12, col_text)
+    let dollars = fill_prices[idx] / 100
+    let cents   = fill_prices[idx] % 100
+    let p_str = int_to_string(dollars) ++ "." ++ int_to_string(cents)
+    raylib.draw_text(p_str, fills_x + 170, y, 12, col_text)
+    draw_fills_rows(fill_prices, fill_qtys, fill_sides, fill_seqs,
+                    fhead, rows, k + 1)
+  }
+}
+
+# ----- header / footer -----
+
+fn draw_header(paused: Bool, period: Int) : Unit / Ffi = {
+  raylib.draw_text("Order book  /  AAPL  /  kaikai + raylib + actors",
+                   24, 8, 20, col_text)
+  raylib.draw_text("SPACE pausa  R reset  F+ S- velocidad  ESC salir",
+                   24, 580, 13, col_dim)
+  if paused {
+    raylib.draw_text("PAUSADO", 660, 14, 14, col_accent)
+  } else {
+    raylib.draw_text("orders/s ~", 660, 14, 12, col_dim)
+    raylib.draw_text(int_to_string(60 / period), 730, 14, 12, col_text)
+  }
+}
+
+fn draw_footer(total_orders: Int, total_fills: Int,
+               total_volume: Int) : Unit / Ffi = {
+  let y = height - 50
+  raylib.draw_rectangle(24, y, width - 48, 30, col_panel)
+  raylib.draw_text("orders", 40, y + 9, 12, col_dim)
+  raylib.draw_text(int_to_string(total_orders), 90, y + 7, 14, col_text)
+  raylib.draw_text("fills", 220, y + 9, 12, col_dim)
+  raylib.draw_text(int_to_string(total_fills), 260, y + 7, 14, col_text)
+  raylib.draw_text("volume", 400, y + 9, 12, col_dim)
+  raylib.draw_text(int_to_string(total_volume), 460, y + 7, 14, col_text)
+  let fill_rate = if total_orders == 0 { 0 } else { total_fills * 100 / total_orders }
+  raylib.draw_text("fill rate %", 600, y + 9, 12, col_dim)
+  raylib.draw_text(int_to_string(fill_rate), 690, y + 7, 14, col_accent)
+}
+
+# ============================================================
+#  4. ===== ACTORS ==============================================
+#
+#  Two producer fibers (random buyer, random seller) and one
+#  matching-engine fiber. The producers `Actor.send` orders at
+#  the engine's `Pid[Order]`; the engine `Actor.receive`s in a
+#  loop, processes the order, and writes fills to the shared
+#  ring. The frame loop in main yields each frame to give the
+#  scheduler room to interleave.
+# ============================================================
+
+const initial_mid : Int = 17500   # 175.00
+
+# ---- random helpers ----
+
+# Random tilt: the producer's price drifts back toward the long-
+# run mean. Used to keep the book centred so it doesn't run away
+# in one direction.
+fn drifted_price(seed: Int, mean: Int) : Int / Ffi = {
+  let noise = raylib.get_random_value(0 - 80, 80)        # ±80 cents
+  mean + seed * 5 + noise                                 # ±0.20 mean offset
+}
+
+fn random_qty() : Int / Ffi = {
+  let r = raylib.get_random_value(0, 99)
+  if r < 70 { raylib.get_random_value(10, 49) }
+  else if r < 95 { raylib.get_random_value(50, 199) }
+  else { raylib.get_random_value(200, 800) }
+}
+
+# ---- producers ----
+#
+# Each producer fiber emits one limit order per `tick`, then
+# yields. `pace_period` (a Ref[Int]) controls how many engine-
+# round-trips elapse between two producer sends; the user can
+# speed up or slow down the rate at runtime.
+
+fn producer_buy(engine: Pid[Order],
+                pace_period: Ref[Int],
+                paused: Ref[Int]) : Unit / Actor[Order] + Spawn + Ffi + Mutable = {
+  if @paused == 0 {
+    # Buyer biases its limit price slightly below the mid.
+    let p = drifted_price(0 - 2, initial_mid)
+    let q = random_qty()
+    Actor.send(engine, LimitOrder(Buy, p, q))
+  } else { () }
+  burn_cycles(@pace_period)
+  fiber_yield()
+  producer_buy(engine, pace_period, paused)
+}
+
+fn producer_sell(engine: Pid[Order],
+                 pace_period: Ref[Int],
+                 paused: Ref[Int]) : Unit / Actor[Order] + Spawn + Ffi + Mutable = {
+  if @paused == 0 {
+    # Seller biases above the mid.
+    let p = drifted_price(2, initial_mid)
+    let q = random_qty()
+    Actor.send(engine, LimitOrder(Sell, p, q))
+  } else { () }
+  burn_cycles(@pace_period)
+  fiber_yield()
+  producer_sell(engine, pace_period, paused)
+}
+
+# Cooperative pacing: yield N times before sending the next
+# order. The user's F / S keys mutate `pace_period` so the rate
+# is adjustable.
+fn burn_cycles(n: Int) : Unit / Spawn = {
+  if n <= 0 { () }
+  else { fiber_yield(); burn_cycles(n - 1) }
+}
+
+# ---- matching engine ----
+#
+# Drains the mailbox forever, processes each order against the
+# book, writes fills.
+
+fn matching_engine(seq: Ref[Int],
+                   total_orders: Ref[Int],
+                   total_fills: Ref[Int],
+                   total_volume: Ref[Int],
+                   bid_prices: Array[Int], bid_qtys: Array[Int], n_bids: Ref[Int],
+                   ask_prices: Array[Int], ask_qtys: Array[Int], n_asks: Ref[Int],
+                   fill_prices: Array[Int], fill_qtys: Array[Int],
+                   fill_sides: Array[Int], fill_seqs: Array[Int],
+                   fhead: Ref[Int], fcount: Ref[Int]) : Unit / Actor[Order] + Mutable = {
+  let o = Actor.receive()
+  let s = @seq + 1
+  seq := s
+  total_orders := @total_orders + 1
+  process_order(o,
+                bid_prices, bid_qtys, n_bids,
+                ask_prices, ask_qtys, n_asks,
+                fill_prices, fill_qtys, fill_sides, fill_seqs,
+                fhead, fcount, total_volume, total_fills, s)
+  matching_engine(seq, total_orders, total_fills, total_volume,
+                  bid_prices, bid_qtys, n_bids,
+                  ask_prices, ask_qtys, n_asks,
+                  fill_prices, fill_qtys, fill_sides, fill_seqs,
+                  fhead, fcount)
+}
+
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+#
+#  The frame loop is the main fiber: input + render + yield.
+#  Producers and engine run as sibling fibers and progress
+#  during the yields between paints.
+# ============================================================
+
+const key_space : Int = 32
+const key_r     : Int = 82
+const key_f     : Int = 70
+const key_s     : Int = 83
+
+const min_period     : Int = 2
+const max_period     : Int = 60
+const default_period : Int = 12
+
+fn frame_loop(paused: Ref[Int],
+              pace_period: Ref[Int],
+              total_orders: Ref[Int], total_fills: Ref[Int], total_volume: Ref[Int],
+              bid_prices: Array[Int], bid_qtys: Array[Int], n_bids: Ref[Int],
+              ask_prices: Array[Int], ask_qtys: Array[Int], n_asks: Ref[Int],
+              fill_prices: Array[Int], fill_qtys: Array[Int],
+              fill_sides: Array[Int], fill_seqs: Array[Int],
+              fhead: Ref[Int], fcount: Ref[Int]) : Unit / Ffi + Spawn + Mutable = {
+  until { raylib.window_should_close() } {
+    # ---- input ----
+    if raylib.is_key_pressed(key_space) {
+      paused := if @paused == 0 { 1 } else { 0 }
+    }
+    if raylib.is_key_pressed(key_r) {
+      clear_book(n_bids, n_asks, fhead, fcount)
+      total_orders := 0
+      total_fills := 0
+      total_volume := 0
+    } else { () }
+    if raylib.is_key_pressed(key_f) {
+      let p = @pace_period
+      if p > min_period { pace_period := p - 2 } else { () }
+    } else { () }
+    if raylib.is_key_pressed(key_s) {
+      let p = @pace_period
+      if p < max_period { pace_period := p + 2 } else { () }
+    } else { () }
+
+    # ---- VIEW: render ----
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_header(@paused != 0, @pace_period)
+    draw_spread(bid_prices, ask_prices, @n_bids, @n_asks)
+    draw_book_side(bid_prices, bid_qtys, @n_bids, bid_x, col_bid, "BIDS")
+    draw_book_side(ask_prices, ask_qtys, @n_asks, ask_x, col_ask, "ASKS")
+    draw_fills(fill_prices, fill_qtys, fill_sides, fill_seqs,
+               @fhead, @fcount)
+    draw_footer(@total_orders, @total_fills, @total_volume)
+    raylib.end_drawing()
+
+    # ---- yield: let the producers + engine make progress ----
+    fiber_yield()
+  }
+}
+
+fn run() : Unit / Ffi + Actor[Order] + Spawn + Mutable = {
+  # Shared book state.
+  let bid_prices = array_make(n_levels, 0)
+  let bid_qtys   = array_make(n_levels, 0)
+  let ask_prices = array_make(n_levels, 0)
+  let ask_qtys   = array_make(n_levels, 0)
+  let n_bids = Mutable.ref_make(0)
+  let n_asks = Mutable.ref_make(0)
+
+  # Fills ring.
+  let fill_prices = array_make(fills_len, 0)
+  let fill_qtys   = array_make(fills_len, 0)
+  let fill_sides  = array_make(fills_len, 0)
+  let fill_seqs   = array_make(fills_len, 0)
+  let fhead  = Mutable.ref_make(0)
+  let fcount = Mutable.ref_make(0)
+
+  # Stats.
+  let seq = Mutable.ref_make(0)
+  let total_orders = Mutable.ref_make(0)
+  let total_fills  = Mutable.ref_make(0)
+  let total_volume = Mutable.ref_make(0)
+
+  # Runtime knobs.
+  let paused = Mutable.ref_make(0)
+  let pace_period = Mutable.ref_make(default_period)
+
+  # The engine receives at OUR mailbox; producers send to it.
+  let engine = Actor.self()
+
+  # Spawn the matching engine first so it can drain ASAP. The
+  # thunk closes over the shared state and calls the engine
+  # body once per tick. Wrapping it in a single-line lambda
+  # keeps the parser happy.
+  let engine_thunk = () => matching_engine(seq, total_orders, total_fills, total_volume, bid_prices, bid_qtys, n_bids, ask_prices, ask_qtys, n_asks, fill_prices, fill_qtys, fill_sides, fill_seqs, fhead, fcount)
+  let _ = fiber_spawn(engine_thunk)
+  let _ = fiber_spawn(() => producer_buy(engine, pace_period, paused))
+  let _ = fiber_spawn(() => producer_sell(engine, pace_period, paused))
+
+  frame_loop(paused, pace_period,
+             total_orders, total_fills, total_volume,
+             bid_prices, bid_qtys, n_bids,
+             ask_prices, ask_qtys, n_asks,
+             fill_prices, fill_qtys, fill_sides, fill_seqs,
+             fhead, fcount)
+}
+
+fn main() : Int / Ffi + Spawn + Mutable = {
+  raylib.set_random_seed(7)
+  raylib.init_window(width, height, "Order book / kaikai + raylib + actors")
+  raylib.set_target_fps(60)
+
+  with_mailbox { run() }
+
+  raylib.close_window()
+  0
+}
