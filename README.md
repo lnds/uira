@@ -1,4 +1,7 @@
-# kaikai-raylib
+# uira
+
+> *uira* — Rapa Nui for **rayo / relámpago** (lightning).
+> Drawing fast pixels feels close enough.
 
 A small [raylib](https://www.raylib.com/) FFI binding for
 [kaikai](https://kaikai-lang.org/), built on the `[<extern_c>]`
@@ -17,7 +20,7 @@ into primitives, because kaikai FFI v1 only carries `Int`,
 ## What's in the box
 
 ```
-kaikai-raylib/
+uira/
 ├── ffi/
 │   ├── raylib.kai       # kaikai-side bindings
 │   ├── raylib_shim.c    # C wrapper: scalar-only signatures
