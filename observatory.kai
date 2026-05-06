@@ -150,13 +150,13 @@ fn class_label(s: Spectral) : String = match s {
 # Visual radius for HR / parallax dots, in pixels. Bigger and
 # brighter means a "louder" star to the eye.
 fn class_radius(s: Spectral) : Real = match s {
-  O -> 5.0
-  B -> 4.5
-  A -> 4.0
-  F -> 3.5
-  G -> 3.5
-  K -> 3.0
-  M -> 2.5
+  O -> 7.0
+  B -> 6.0
+  A -> 5.5
+  F -> 5.0
+  G -> 5.0
+  K -> 4.5
+  M -> 4.0
 }
 
 # ============================================================
@@ -582,11 +582,11 @@ fn draw_nbody(xs: Array[Real], ys: Array[Real],
 
   # HUD.
   raylib.draw_text("MODO  N-body solar (gravedad real, leapfrog Verlet)",
-                   24, 18, 18, col_text)
-  raylib.draw_text("dia simulado:", 24, 50, 14, col_dim)
-  raylib.draw_text(int_to_string(real_to_int(sim_days)), 130, 50, 14, col_text)
-  raylib.draw_text("escala (au -> px):", 240, 50, 14, col_dim)
-  raylib.draw_text(real_to_string(scale), 380, 50, 14, col_text)
+                   24, 18, 26, col_text)
+  raylib.draw_text("dia simulado:", 24, 60, 20, col_dim)
+  raylib.draw_text(int_to_string(real_to_int(sim_days)), 180, 60, 20, col_text)
+  raylib.draw_text("escala (au -> px):", 320, 60, 20, col_dim)
+  raylib.draw_text(real_to_string(scale), 510, 60, 20, col_text)
 }
 
 fn draw_bodies_loop(xs: Array[Real], ys: Array[Real],
@@ -601,7 +601,7 @@ fn draw_bodies_loop(xs: Array[Real], ys: Array[Real],
       let r = if ms[i] > 0.0001 { 5.0 } else { 3.5 }   # gas giants bigger
       raylib.draw_circle(real_to_int(x), real_to_int(y), r, body_color(i))
       raylib.draw_text(body_name(i),
-                       real_to_int(x) + 6, real_to_int(y) - 6, 11, col_dim)
+                       real_to_int(x) + 8, real_to_int(y) - 8, 16, col_dim)
     }
     draw_bodies_loop(xs, ys, ms, s, i + 1)
   }
@@ -695,15 +695,15 @@ fn reduce_pow2(x: Real, k: Int) : Real = {
 
 fn draw_hr() : Unit / Ffi = {
   raylib.draw_text("MODO  Diagrama Hertzsprung-Russell",
-                   24, 18, 18, col_text)
+                   24, 18, 26, col_text)
   raylib.draw_text("eje X: temperatura (K) decreciente   eje Y: luminosidad (L_sol)",
-                   24, 44, 12, col_dim)
+                   24, 56, 18, col_dim)
 
   # Plot area.
-  let px_x = 100
-  let px_y = 90
-  let px_w = 900
-  let px_h = 540
+  let px_x = 110
+  let px_y = 110
+  let px_w = 880
+  let px_h = 510
   raylib.draw_rectangle(px_x, px_y, px_w, px_h, col_panel)
 
   # Grid lines: temp at 30000, 10000, 7500, 6000, 5200, 3700.
@@ -761,14 +761,14 @@ fn draw_temp_line(t: Real, label: String,
                   px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let x = temp_to_x(t, px_x, px_w)
   raylib.draw_rectangle(x, px_y, 1, px_h, col_grid)
-  raylib.draw_text(label, x - 28, px_y + px_h + 4, 10, col_dim)
+  raylib.draw_text(label, x - 38, px_y + px_h + 6, 14, col_dim)
 }
 
 fn draw_lum_line(l: Real, label: String,
                  px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let y = lum_to_y(l, px_y, px_h)
   raylib.draw_rectangle(px_x, y, px_w, 1, col_grid)
-  raylib.draw_text(label, px_x - 50, y - 6, 10, col_dim)
+  raylib.draw_text(label, px_x - 70, y - 8, 14, col_dim)
 }
 
 fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
@@ -783,7 +783,7 @@ fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
     raylib.draw_circle(x, y, class_radius(s), class_color(s))
     # Label only the famous ones to keep the plot legible.
     if i <= 6 or i == 11 or i == 17 {
-      raylib.draw_text(star_name(i), x + 8, y - 6, 11, col_text)
+      raylib.draw_text(star_name(i), x + 10, y - 8, 16, col_text)
     }
     draw_hr_stars(px_x, px_y, px_w, px_h, i + 1)
   }
@@ -797,8 +797,8 @@ fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
 # visibly between the two panels; far stars don't.
 
 const pan_w  : Int = 510
-const pan_h  : Int = 540
-const pan_y  : Int = 90
+const pan_h  : Int = 510
+const pan_y  : Int = 120
 const pan_lx : Int = 30
 const pan_rx : Int = 560
 
@@ -830,7 +830,7 @@ fn project_star(i: Int, obs_x: Real,
   let s = class_of_temp(t)
   raylib.draw_circle(x, y, class_radius(s), class_color(s))
   if i <= 9 or i == 21 or i == 22 {
-    raylib.draw_text(star_name(i), x + 5, y - 7, 9, col_dim)
+    raylib.draw_text(star_name(i), x + 8, y - 10, 13, col_dim)
   }
 }
 
@@ -838,16 +838,16 @@ const parallax_gain : Real = 80.0   # visual amplification
 const arcsec_to_px  : Real = 1.0    # base scale
 
 fn draw_parallax() : Unit / Ffi = {
-  raylib.draw_text("MODO  Paralaje estelar (estrellas cercanas se desplazan entre enero y julio)",
-                   24, 18, 16, col_text)
-  raylib.draw_text("base: 2 au   ganancia visual: 80×",
-                   24, 44, 12, col_dim)
+  raylib.draw_text("MODO  Paralaje estelar",
+                   24, 18, 26, col_text)
+  raylib.draw_text("estrellas cercanas se desplazan entre enero y julio   |   base: 2 au   ganancia visual: 80x",
+                   24, 56, 16, col_dim)
 
   # Panels.
   raylib.draw_rectangle(pan_lx, pan_y, pan_w, pan_h, col_panel)
   raylib.draw_rectangle(pan_rx, pan_y, pan_w, pan_h, col_panel)
-  raylib.draw_text("Enero  (Tierra a -1 au)", pan_lx + 8, pan_y - 18, 13, col_text)
-  raylib.draw_text("Julio  (Tierra a +1 au)", pan_rx + 8, pan_y - 18, 13, col_text)
+  raylib.draw_text("Enero  (Tierra a -1 au)", pan_lx + 8, pan_y - 26, 18, col_text)
+  raylib.draw_text("Julio  (Tierra a +1 au)", pan_rx + 8, pan_y - 26, 18, col_text)
 
   # Stars in each panel.
   draw_parallax_loop(pan_lx, pan_w, pan_h, 0.0 - 1.0, 0)
@@ -866,10 +866,10 @@ fn draw_parallax_loop(panel_x: Int, panel_w: Int, panel_h: Int,
 # ----- footer -----
 
 fn draw_footer(active: Mode) : Unit / Ffi = {
-  let y = height - 36
-  raylib.draw_rectangle(0, y, width, 36, col_panel)
-  raylib.draw_text("N  N-body         H  HR diagram         P  Paralaje         SPACE pausa   + - velocidad   R reset   ESC salir",
-                   24, y + 10, 13, col_dim)
+  let y = height - 50
+  raylib.draw_rectangle(0, y, width, 50, col_panel)
+  raylib.draw_text("N  N-body     H  HR diagram     P  Paralaje     SPACE pausa     + -  velocidad     R reset     ESC salir",
+                   24, y + 16, 17, col_dim)
 }
 
 # ============================================================
