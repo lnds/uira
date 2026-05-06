@@ -41,4 +41,10 @@ int     kai_raylib_is_key_pressed(int64_t key);
 void    kai_raylib_set_random_seed(int64_t s);
 int64_t kai_raylib_get_random_value(int64_t min, int64_t max);
 
+int64_t kai_raylib_load_font(const char *path, int64_t size);
+void    kai_raylib_unload_font(int64_t slot);
+void    kai_raylib_draw_text_ex(int64_t slot, const char *text,
+                                int64_t x, int64_t y, int64_t size,
+                                double spacing, int64_t color);
+
 #endif

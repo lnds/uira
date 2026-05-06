@@ -568,7 +568,8 @@ const cy     : Real = 380.0
 # Jupiter+ at the same time without one or the other vanishing.
 fn px_per_au(scale: Real) : Real = scale
 
-fn draw_nbody(xs: Array[Real], ys: Array[Real],
+fn draw_nbody(font: Int,
+              xs: Array[Real], ys: Array[Real],
               ms: Array[Real],
               trails: Array[Real], head: Int,
               scale: Real, sim_days: Real) : Unit / Ffi = {
@@ -578,18 +579,19 @@ fn draw_nbody(xs: Array[Real], ys: Array[Real],
   draw_trails(trails, head, s)
 
   # Bodies.
-  draw_bodies_loop(xs, ys, ms, s, 0)
+  draw_bodies_loop(font, xs, ys, ms, s, 0)
 
   # HUD.
-  raylib.draw_text("MODO  N-body solar (gravedad real, leapfrog Verlet)",
-                   24, 18, 26, col_text)
-  raylib.draw_text("dia simulado:", 24, 60, 20, col_dim)
-  raylib.draw_text(int_to_string(real_to_int(sim_days)), 180, 60, 20, col_text)
-  raylib.draw_text("escala (au -> px):", 320, 60, 20, col_dim)
-  raylib.draw_text(real_to_string(scale), 510, 60, 20, col_text)
+  raylib.draw_text_ex(font, "MODO  N-body solar (gravedad real, leapfrog Verlet)",
+                   24, 18, 26, 1.0, col_text)
+  raylib.draw_text_ex(font, "dia simulado:", 24, 60, 20, 1.0, col_dim)
+  raylib.draw_text_ex(font, int_to_string(real_to_int(sim_days)), 180, 60, 20, 1.0, col_text)
+  raylib.draw_text_ex(font, "escala (au -> px):", 320, 60, 20, 1.0, col_dim)
+  raylib.draw_text_ex(font, real_to_string(scale), 510, 60, 20, 1.0, col_text)
 }
 
-fn draw_bodies_loop(xs: Array[Real], ys: Array[Real],
+fn draw_bodies_loop(font: Int,
+                    xs: Array[Real], ys: Array[Real],
                     ms: Array[Real], s: Real, i: Int) : Unit / Ffi = {
   if i >= n_bodies { () }
   else {
@@ -600,10 +602,10 @@ fn draw_bodies_loop(xs: Array[Real], ys: Array[Real],
     } else {
       let r = if ms[i] > 0.0001 { 5.0 } else { 3.5 }   # gas giants bigger
       raylib.draw_circle(real_to_int(x), real_to_int(y), r, body_color(i))
-      raylib.draw_text(body_name(i),
-                       real_to_int(x) + 8, real_to_int(y) - 8, 16, col_dim)
+      raylib.draw_text_ex(font, body_name(i),
+                       real_to_int(x) + 8, real_to_int(y) - 8, 16, 1.0, col_dim)
     }
-    draw_bodies_loop(xs, ys, ms, s, i + 1)
+    draw_bodies_loop(font, xs, ys, ms, s, i + 1)
   }
 }
 
@@ -693,11 +695,11 @@ fn reduce_pow2(x: Real, k: Int) : Real = {
   else { int_to_real(k) * 1000000.0 + x }
 }
 
-fn draw_hr() : Unit / Ffi = {
-  raylib.draw_text("MODO  Diagrama Hertzsprung-Russell",
-                   24, 18, 26, col_text)
-  raylib.draw_text("eje X: temperatura (K) decreciente   eje Y: luminosidad (L_sol)",
-                   24, 56, 18, col_dim)
+fn draw_hr(font: Int) : Unit / Ffi = {
+  raylib.draw_text_ex(font, "MODO  Diagrama Hertzsprung-Russell",
+                   24, 18, 26, 1.0, col_text)
+  raylib.draw_text_ex(font, "eje X: temperatura (K) decreciente   eje Y: luminosidad (L_sol)",
+                   24, 56, 18, 1.0, col_dim)
 
   # Plot area.
   let px_x = 110
@@ -707,10 +709,10 @@ fn draw_hr() : Unit / Ffi = {
   raylib.draw_rectangle(px_x, px_y, px_w, px_h, col_panel)
 
   # Grid lines: temp at 30000, 10000, 7500, 6000, 5200, 3700.
-  draw_hr_grid(px_x, px_y, px_w, px_h)
+  draw_hr_grid(font, px_x, px_y, px_w, px_h)
 
   # Plot the catalog.
-  draw_hr_stars(px_x, px_y, px_w, px_h, 0)
+  draw_hr_stars(font, px_x, px_y, px_w, px_h, 0)
 }
 
 # Map T_eff (K) to X. Inverted log scale: hot stars on the left.
@@ -739,39 +741,39 @@ fn lum_to_y(l: Real, px_y: Int, px_h: Int) : Int = {
   real_to_int(y)
 }
 
-fn draw_hr_grid(px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
+fn draw_hr_grid(font: Int, px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   # Temperature grid lines at the Harvard breakpoints.
-  draw_temp_line(30000.0, "30000K  O", px_x, px_y, px_w, px_h)
-  draw_temp_line(10000.0, "10000K  B", px_x, px_y, px_w, px_h)
-  draw_temp_line( 7500.0,  "7500K  A", px_x, px_y, px_w, px_h)
-  draw_temp_line( 6000.0,  "6000K  F", px_x, px_y, px_w, px_h)
-  draw_temp_line( 5200.0,  "5200K  G", px_x, px_y, px_w, px_h)
-  draw_temp_line( 3700.0,  "3700K  K", px_x, px_y, px_w, px_h)
+  draw_temp_line(font, 30000.0, "30000K  O", px_x, px_y, px_w, px_h)
+  draw_temp_line(font, 10000.0, "10000K  B", px_x, px_y, px_w, px_h)
+  draw_temp_line(font,  7500.0,  "7500K  A", px_x, px_y, px_w, px_h)
+  draw_temp_line(font,  6000.0,  "6000K  F", px_x, px_y, px_w, px_h)
+  draw_temp_line(font,  5200.0,  "5200K  G", px_x, px_y, px_w, px_h)
+  draw_temp_line(font,  3700.0,  "3700K  K", px_x, px_y, px_w, px_h)
 
   # Luminosity grid lines per decade.
-  draw_lum_line(0.0001, "1e-4 L", px_x, px_y, px_w, px_h)
-  draw_lum_line(0.01,   "1e-2 L", px_x, px_y, px_w, px_h)
-  draw_lum_line(1.0,    "  1  L", px_x, px_y, px_w, px_h)
-  draw_lum_line(100.0,  "100  L", px_x, px_y, px_w, px_h)
-  draw_lum_line(10000.0, "1e4 L", px_x, px_y, px_w, px_h)
-  draw_lum_line(1000000.0, "1e6 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 0.0001, "1e-4 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 0.01,   "1e-2 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 1.0,    "  1  L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 100.0,  "100  L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 10000.0, "1e4 L", px_x, px_y, px_w, px_h)
+  draw_lum_line(font, 1000000.0, "1e6 L", px_x, px_y, px_w, px_h)
 }
 
-fn draw_temp_line(t: Real, label: String,
+fn draw_temp_line(font: Int, t: Real, label: String,
                   px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let x = temp_to_x(t, px_x, px_w)
   raylib.draw_rectangle(x, px_y, 1, px_h, col_grid)
-  raylib.draw_text(label, x - 38, px_y + px_h + 6, 14, col_dim)
+  raylib.draw_text_ex(font, label, x - 38, px_y + px_h + 6, 14, 1.0, col_dim)
 }
 
-fn draw_lum_line(l: Real, label: String,
+fn draw_lum_line(font: Int, l: Real, label: String,
                  px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let y = lum_to_y(l, px_y, px_h)
   raylib.draw_rectangle(px_x, y, px_w, 1, col_grid)
-  raylib.draw_text(label, px_x - 70, y - 8, 14, col_dim)
+  raylib.draw_text_ex(font, label, px_x - 70, y - 8, 14, 1.0, col_dim)
 }
 
-fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
+fn draw_hr_stars(font: Int, px_x: Int, px_y: Int, px_w: Int, px_h: Int,
                  i: Int) : Unit / Ffi = {
   if i >= n_stars { () }
   else {
@@ -783,9 +785,9 @@ fn draw_hr_stars(px_x: Int, px_y: Int, px_w: Int, px_h: Int,
     raylib.draw_circle(x, y, class_radius(s), class_color(s))
     # Label only the famous ones to keep the plot legible.
     if i <= 6 or i == 11 or i == 17 {
-      raylib.draw_text(star_name(i), x + 10, y - 8, 16, col_text)
+      raylib.draw_text_ex(font, star_name(i), x + 10, y - 8, 16, 1.0, col_text)
     }
-    draw_hr_stars(px_x, px_y, px_w, px_h, i + 1)
+    draw_hr_stars(font, px_x, px_y, px_w, px_h, i + 1)
   }
 }
 
@@ -809,7 +811,7 @@ const pan_rx : Int = 560
 #
 # We project the unshifted RA/Dec into the panel first, then
 # nudge by the parallax shift in the X axis.
-fn project_star(i: Int, obs_x: Real,
+fn project_star(font: Int, i: Int, obs_x: Real,
                 panel_x: Int, panel_w: Int, panel_h: Int) : Unit / Ffi = {
   # Base (RA, Dec) in flat-sky coords. RA: [0,24h] -> [0, panel_w].
   let ra = star_ra_h(i)
@@ -830,46 +832,46 @@ fn project_star(i: Int, obs_x: Real,
   let s = class_of_temp(t)
   raylib.draw_circle(x, y, class_radius(s), class_color(s))
   if i <= 9 or i == 21 or i == 22 {
-    raylib.draw_text(star_name(i), x + 8, y - 10, 13, col_dim)
+    raylib.draw_text_ex(font, star_name(i), x + 8, y - 10, 13, 1.0, col_dim)
   }
 }
 
 const parallax_gain : Real = 80.0   # visual amplification
 const arcsec_to_px  : Real = 1.0    # base scale
 
-fn draw_parallax() : Unit / Ffi = {
-  raylib.draw_text("MODO  Paralaje estelar",
-                   24, 18, 26, col_text)
-  raylib.draw_text("estrellas cercanas se desplazan entre enero y julio   |   base: 2 au   ganancia visual: 80x",
-                   24, 56, 16, col_dim)
+fn draw_parallax(font: Int) : Unit / Ffi = {
+  raylib.draw_text_ex(font, "MODO  Paralaje estelar",
+                   24, 18, 26, 1.0, col_text)
+  raylib.draw_text_ex(font, "estrellas cercanas se desplazan entre enero y julio   |   base: 2 au   ganancia visual: 80x",
+                   24, 56, 16, 1.0, col_dim)
 
   # Panels.
   raylib.draw_rectangle(pan_lx, pan_y, pan_w, pan_h, col_panel)
   raylib.draw_rectangle(pan_rx, pan_y, pan_w, pan_h, col_panel)
-  raylib.draw_text("Enero  (Tierra a -1 au)", pan_lx + 8, pan_y - 26, 18, col_text)
-  raylib.draw_text("Julio  (Tierra a +1 au)", pan_rx + 8, pan_y - 26, 18, col_text)
+  raylib.draw_text_ex(font, "Enero  (Tierra a -1 au)", pan_lx + 8, pan_y - 26, 18, 1.0, col_text)
+  raylib.draw_text_ex(font, "Julio  (Tierra a +1 au)", pan_rx + 8, pan_y - 26, 18, 1.0, col_text)
 
   # Stars in each panel.
-  draw_parallax_loop(pan_lx, pan_w, pan_h, 0.0 - 1.0, 0)
-  draw_parallax_loop(pan_rx, pan_w, pan_h,  1.0,      0)
+  draw_parallax_loop(font, pan_lx, pan_w, pan_h, 0.0 - 1.0, 0)
+  draw_parallax_loop(font, pan_rx, pan_w, pan_h,  1.0,      0)
 }
 
-fn draw_parallax_loop(panel_x: Int, panel_w: Int, panel_h: Int,
+fn draw_parallax_loop(font: Int, panel_x: Int, panel_w: Int, panel_h: Int,
                       obs_x: Real, i: Int) : Unit / Ffi = {
   if i >= n_stars { () }
   else {
-    project_star(i, obs_x, panel_x, panel_w, panel_h)
-    draw_parallax_loop(panel_x, panel_w, panel_h, obs_x, i + 1)
+    project_star(font, i, obs_x, panel_x, panel_w, panel_h)
+    draw_parallax_loop(font, panel_x, panel_w, panel_h, obs_x, i + 1)
   }
 }
 
 # ----- footer -----
 
-fn draw_footer(active: Mode) : Unit / Ffi = {
+fn draw_footer(font: Int, active: Mode) : Unit / Ffi = {
   let y = height - 50
   raylib.draw_rectangle(0, y, width, 50, col_panel)
-  raylib.draw_text("N  N-body     H  HR diagram     P  Paralaje     SPACE pausa     + -  velocidad     R reset     ESC salir",
-                   24, y + 16, 17, col_dim)
+  raylib.draw_text_ex(font, "N  N-body     H  HR diagram     P  Paralaje     SPACE pausa     + -  velocidad     R reset     ESC salir",
+                   24, y + 16, 17, 1.0, col_dim)
 }
 
 # ============================================================
@@ -884,7 +886,8 @@ const key_plus  : Int = 61
 const key_minus : Int = 45
 const key_r     : Int = 82
 
-fn frame_loop(xs: Array[Real], ys: Array[Real],
+fn frame_loop(font: Int,
+              xs: Array[Real], ys: Array[Real],
               vxs: Array[Real], vys: Array[Real],
               ms: Array[Real],
               trails: Array[Real],
@@ -921,8 +924,8 @@ fn frame_loop(xs: Array[Real], ys: Array[Real],
     # ---- VIEW: render the active mode ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    render_mode(m, xs, ys, ms, trails, @trail_head, @scale, @sim_days)
-    draw_footer(m)
+    render_mode(font, m, xs, ys, ms, trails, @trail_head, @scale, @sim_days)
+    draw_footer(font, m)
     raylib.end_drawing()
   }
 }
@@ -961,13 +964,13 @@ fn tick_mode(m: Mode,
   Parallax -> { () }
 }
 
-fn render_mode(m: Mode,
+fn render_mode(font: Int, m: Mode,
                xs: Array[Real], ys: Array[Real], ms: Array[Real],
                trails: Array[Real], head: Int,
                scale: Real, sim_days: Real) : Unit / Ffi = match m {
-  NBody    -> draw_nbody(xs, ys, ms, trails, head, scale, sim_days)
-  HR       -> draw_hr()
-  Parallax -> draw_parallax()
+  NBody    -> draw_nbody(font, xs, ys, ms, trails, head, scale, sim_days)
+  HR       -> draw_hr(font)
+  Parallax -> draw_parallax(font)
 }
 
 fn main() : Unit / Ffi + Mutable = {
@@ -986,6 +989,11 @@ fn main() : Unit / Ffi + Mutable = {
   raylib.init_window(width, height, "Observatorio / kaikai + raylib")
   raylib.set_target_fps(60)
 
+  # Load a smooth TTF at a generous pixel size so labels stay
+  # crisp at the audience's distance. -1 means "fall back to the
+  # bitmap default", which still works (less pretty).
+  let font = raylib.load_font("/System/Library/Fonts/Supplemental/Arial.ttf", 32)
+
   init_bodies(xs, ys, vxs, vys, ms)
 
   let trail_head = Mutable.ref_make(0)
@@ -995,9 +1003,10 @@ fn main() : Unit / Ffi + Mutable = {
   let sim_days   = Mutable.ref_make(0.0)
   let scale      = Mutable.ref_make(28.0)       # px per au
 
-  frame_loop(xs, ys, vxs, vys, ms,
+  frame_loop(font, xs, ys, vxs, vys, ms,
              trails, ax, ay,
              trail_head, mode_ref, paused, dt_ref, sim_days, scale)
+  raylib.unload_font(font)
 
   raylib.close_window()
 }

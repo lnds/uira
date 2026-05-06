@@ -75,6 +75,25 @@ pub fn set_random_seed(s: Int) : Unit / Ffi
 extern "C"("kai_raylib_get_random_value")
 pub fn get_random_value(min: Int, max: Int) : Int / Ffi
 
+# ----- fonts -----
+#
+# Load a TTF / OTF font from disk at a given pixel size and
+# return an opaque slot (Int) the caller passes back to
+# `draw_text_ex`. Up to 4 fonts can be loaded at once. Slot
+# value -1 means "no custom font, use the default bitmap one"
+# — `draw_text_ex(-1, ...)` falls back to `draw_text`.
+
+extern "C"("kai_raylib_load_font")
+pub fn load_font(path: String, size: Int) : Int / Ffi
+
+extern "C"("kai_raylib_unload_font")
+pub fn unload_font(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_draw_text_ex")
+pub fn draw_text_ex(slot: Int, s: String,
+                    x: Int, y: Int, size: Int,
+                    spacing: Real, color: Int) : Unit / Ffi
+
 # ----- math (libm direct, no shim) -----
 
 extern "C" pub fn sin(x: Real) : Real / Ffi

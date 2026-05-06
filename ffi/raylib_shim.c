@@ -16,6 +16,7 @@
 
 #include <raylib.h>
 #include <stdint.h>
+#include <stddef.h>
 
 static Color color_from_packed(int64_t p) {
   return (Color){
@@ -95,4 +96,56 @@ int kai_raylib_is_key_pressed(int64_t key) { return IsKeyPressed((int)key) ? 1 :
 void kai_raylib_set_random_seed(int64_t s) { SetRandomSeed((unsigned int)s); }
 int64_t kai_raylib_get_random_value(int64_t min, int64_t max) {
   return (int64_t)GetRandomValue((int)min, (int)max);
+}
+
+/* --- fonts ---
+ *
+ * raylib's Font is a struct (texture + atlas + glyph recs).
+ * kaikai FFI v1 can't pass structs, so we keep a small slot
+ * table of loaded fonts inside the shim and hand kaikai an
+ * Int slot id. Slot 0 is reserved for "default" — falls back
+ * to DrawText if the user hasn't loaded a TTF.
+ *
+ * load_font returns the slot id, or -1 if all slots are full
+ * or the file failed to load. draw_text_ex(-1, ...) falls
+ * back to the default bitmap font.
+ */
+
+#define KAI_RAYLIB_MAX_FONTS 4
+static Font kai_raylib_fonts[KAI_RAYLIB_MAX_FONTS];
+static int  kai_raylib_font_loaded[KAI_RAYLIB_MAX_FONTS] = {0,0,0,0};
+
+int64_t kai_raylib_load_font(const char *path, int64_t size) {
+  for (int i = 0; i < KAI_RAYLIB_MAX_FONTS; i++) {
+    if (!kai_raylib_font_loaded[i]) {
+      Font f = LoadFontEx(path, (int)size, NULL, 0);
+      if (!IsFontValid(f)) return (int64_t)(-1);
+      kai_raylib_fonts[i] = f;
+      kai_raylib_font_loaded[i] = 1;
+      return (int64_t)i;
+    }
+  }
+  return (int64_t)(-1);
+}
+
+void kai_raylib_unload_font(int64_t slot) {
+  int i = (int)slot;
+  if (i < 0 || i >= KAI_RAYLIB_MAX_FONTS) return;
+  if (!kai_raylib_font_loaded[i]) return;
+  UnloadFont(kai_raylib_fonts[i]);
+  kai_raylib_font_loaded[i] = 0;
+}
+
+void kai_raylib_draw_text_ex(int64_t slot, const char *text,
+                             int64_t x, int64_t y, int64_t size,
+                             double spacing, int64_t color) {
+  int i = (int)slot;
+  if (i < 0 || i >= KAI_RAYLIB_MAX_FONTS || !kai_raylib_font_loaded[i]) {
+    /* Fall back to the default font. */
+    DrawText(text, (int)x, (int)y, (int)size, color_from_packed(color));
+    return;
+  }
+  Vector2 pos = {(float)x, (float)y};
+  DrawTextEx(kai_raylib_fonts[i], text, pos, (float)size,
+             (float)spacing, color_from_packed(color));
 }
