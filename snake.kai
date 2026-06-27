@@ -220,13 +220,13 @@ fn step(body_x: Array[Int], body_y: Array[Int],
 const cell_size : Int = 25
 
 # Colors (0xRRGGBBAA).
-const col_bg        : Int = 0x101820FF
-const col_grid_dark : Int = 0x182030FF
-const col_snake     : Int = 0x6cfff5FF   # mint cyan body
-const col_head      : Int = 0xfdf9b9FF   # pale yellow head
-const col_apple     : Int = 0xff5050FF
-const col_text      : Int = 0xfdf9b9FF
-const col_dim       : Int = 0x808090FF
+const col_bg        : Color = rgba(0x101820FF)
+const col_grid_dark : Color = rgba(0x182030FF)
+const col_snake     : Color = rgba(0x6cfff5FF)   # mint cyan body
+const col_head      : Color = rgba(0xfdf9b9FF)   # pale yellow head
+const col_apple     : Color = rgba(0xff5050FF)
+const col_text      : Color = rgba(0xfdf9b9FF)
+const col_dim       : Color = rgba(0x808090FF)
 
 fn draw_grid() : Unit / Ffi {
   var r = 0
@@ -275,7 +275,7 @@ fn draw_hud(score: Int, game_over: Bool) : Unit / Ffi {
   raylib.draw_text(int_to_string(score), 720, 8, 14, col_text)
 
   if game_over {
-    raylib.draw_rectangle(220, 240, 360, 120, 0x000000c8)
+    raylib.draw_rectangle(220, 240, 360, 120, raylib.rgba(0x000000c8))
     raylib.draw_text("GAME OVER", 290, 270, 40, col_apple)
     raylib.draw_text("press R to play again", 280, 320, 20, col_text)
   }

@@ -133,7 +133,7 @@ fn step_one(
   sep_x: Array[Real], sep_y: Array[Real],
   ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
   coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
-) : Unit / Mutable {
+) : Unit / Ffi + Mutable {
   let xi = xs[i]
   let yi = ys[i]
   let vxi = vxs[i]
@@ -243,9 +243,9 @@ fn apply_step(
 #  translated to (x, y). Reads xs/ys/vxs/vys; never mutates.
 # ============================================================
 
-const col_bg   : Int = 0x0a0a14FF
-const col_boid : Int = 0xfdf9b9FF
-const col_text : Int = 0xfdf9b9FF
+const col_bg   : Color = rgba(0x0a0a14FF)
+const col_boid : Color = rgba(0xfdf9b9FF)
+const col_text : Color = rgba(0xfdf9b9FF)
 
 fn boid_size() : Real = 7.0
 
@@ -272,7 +272,11 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
 
   # raylib DrawTriangle expects clockwise winding; our
   # (tip, left, right) order is clockwise in raylib's y-down screen.
-  raylib.draw_triangle(tip_wx, tip_wy, l_wx, l_wy, r_wx, r_wy, col_boid)
+  raylib.draw_triangle_v(
+    Vector2 { x: tip_wx, y: tip_wy },
+    Vector2 { x: l_wx,   y: l_wy },
+    Vector2 { x: r_wx,   y: r_wy },
+    col_boid)
 }
 
 fn draw_all(xs: Array[Real], ys: Array[Real],

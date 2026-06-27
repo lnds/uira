@@ -4,31 +4,37 @@
 > Drawing fast pixels feels close enough.
 
 A small [raylib](https://www.raylib.com/) FFI binding for
-[kaikai](https://kaikai-lang.org/), built on the `[<extern_c>]`
-axiom support landed in the FFI v1 lane (kaikai 0.37+). Ships
-the binding as a reusable module plus four demos that exercise
-it.
+[kaikai](https://kaikai-lang.org/), built on the FFI v2 features
+(struct-by-value, fixed-width boundary types). Ships the binding
+as a reusable module plus nine demos that exercise it.
 
 The binding covers the slice of raylib needed for 2D games and
 visualisations: window lifecycle, frame loop, basic shapes,
-text, input, random, and a handful of math helpers. Anything
-that takes a `Color` or `Vector2` by value (i.e. nearly all of
-raylib) is bridged through a tiny C shim that flattens those
-into primitives, because kaikai FFI v1 only carries `Int`,
-`Real`, `Bool`, `String`, and `Unit` across the boundary.
+text, input, random, and a handful of math helpers. `Color`,
+`Vector2` and `Rectangle` cross the boundary by value as
+`extern "C" type` records whose layout matches raylib's, so the
+bindings link straight to raylib with no C shim. The one
+exception is fonts: raylib's `Font` holds pointers, so it goes
+through a tiny slot-table shim (`ffi/raylib_fonts.c`). See
+[docs/ffi-v2-migration.md](docs/ffi-v2-migration.md) for the
+design.
 
 ## What's in the box
 
 ```
 uira/
 ├── ffi/
-│   ├── raylib.kai       # kaikai-side bindings
-│   ├── raylib_shim.c    # C wrapper: scalar-only signatures
-│   └── raylib_shim.h    # forward decls, -include'd into out.c
-├── conway.kai           # demo: Game of Life
-├── boids.kai            # demo: Reynolds flocking
-├── mandelbrot.kai       # demo: Mandelbrot explorer (pan + zoom)
-├── snake.kai            # demo: classic snake
+│   ├── raylib.kai        # kaikai-side bindings (raylib direct)
+│   └── raylib_fonts.c    # font slot-table shim (Font isn't by-value)
+├── conway.kai            # demo: Game of Life
+├── boids.kai             # demo: Reynolds flocking
+├── mandelbrot.kai        # demo: Mandelbrot explorer (pan + zoom)
+├── snake.kai             # demo: classic snake
+├── solar.kai             # demo: solar system (orbits)
+├── portfolio.kai         # demo: P&L dashboard
+├── orderbook.kai         # demo: matching engine (actors)
+├── observatory.kai       # demo: N-body / HR diagram / parallax
+├── kaikai.kai            # demo: morphing logo
 ├── Makefile
 └── README.md
 ```
@@ -39,10 +45,12 @@ uira/
 - `cc` (clang or gcc) with C99.
 - `pkg-config`.
 - raylib 5.x. On macOS: `brew install raylib`.
-- kaikai 0.41+. On macOS:
+- kaikai 0.91+. On macOS:
   `brew install lnds/kaikai/kaikai`. The Makefile picks up
   whatever `kai` is on `$PATH`; override to point at a sibling
-  checkout with `make KAI_BIN=../kaikai/bin/kai`.
+  checkout with `make KAI_BIN=../kaikai/bin/kai`. The build
+  forces `--backend=c`: struct-by-value FFI isn't on the native
+  backend yet.
 
 ## Build & run
 
@@ -81,15 +89,17 @@ fn loop() : Unit / Ffi {
 ```
 
 Build it the same way as the demos — see the `Makefile` for the
-exact incantation. The short version: pipe the shim source and
-`pkg-config --cflags --libs raylib` through `CFLAGS` and let
-`kai build` do the rest. The demos `import loop` for
-`repeat` / `until` / `while` / `forever`.
+exact incantation. The short version: pipe the font shim and
+`pkg-config --cflags --libs raylib` through `CFLAGS`, build with
+`--backend=c`, and let `kai build` do the rest. The demos
+`import loop` for `repeat` / `until` / `while` / `forever`.
 
 ## Binding reference
 
-Colours are packed as `0xRRGGBBAA` `Int`s. Pass them to anything
-that paints. There's no `Color` type on the kaikai side.
+`Color` is an `extern "C" type` (`{ r, g, b, a: U8 }`). Write
+colours as `0xRRGGBBAA` hex through the helper `rgba(p): Color`
+and pass the result to anything that paints. `Vector2` and
+`Rect` are likewise by-value records.
 
 ### Window / lifecycle
 
@@ -117,7 +127,21 @@ that paints. There's no `Color` type on the kaikai side.
 | `draw_rectangle(x, y, w, h, color)`               | `DrawRectangle`   |
 | `draw_pixel(x, y, color)`                         | `DrawPixel`       |
 | `draw_text(s, x, y, size, color)`                 | `DrawText`        |
-| `draw_triangle(x1, y1, x2, y2, x3, y3, color)`    | `DrawTriangle`    |
+| `draw_line(x1, y1, x2, y2, color)`                | `DrawLine`        |
+| `draw_circle(x, y, r, color)`                     | `DrawCircle`      |
+| `draw_triangle_v(v1, v2, v3, color)`              | `DrawTriangle`    |
+
+### Fonts
+
+`Font` isn't a by-value struct, so it goes through a slot table
+in `ffi/raylib_fonts.c`. `load_font` returns a slot (or `-1`);
+`draw_text_ex(-1, ...)` falls back to the default bitmap font.
+
+| `pub fn`                                       | C symbol                  |
+| ---------------------------------------------- | ------------------------- |
+| `load_font(path, size)`                        | `kai_raylib_load_font`    |
+| `unload_font(slot)`                            | `kai_raylib_unload_font`  |
+| `draw_text_ex(slot, s, x, y, size, spacing, color)` | `kai_raylib_draw_text_ex` |
 
 ### Input
 
@@ -146,39 +170,47 @@ Common keycodes: `262 right`, `263 left`, `264 down`, `265 up`,
 
 ## How it's wired
 
-kaikai's FFI v1 supports primitive types only and rejects
-pass-by-value structs. raylib takes `Color` and `Vector2` by
-value almost everywhere. The shim
-([`ffi/raylib_shim.c`](ffi/raylib_shim.c)) bridges the two
-worlds: every exported function takes scalars (an `int64_t`
-packed `0xRRGGBBAA` for colours, separate `Real`s for vector
-components) and rebuilds the aggregates internally.
+`Color`, `Vector2` and `Rect` are `extern "C" type` records
+whose field layout matches raylib's own structs, so kaikai
+passes them by value straight to `ClearBackground`,
+`DrawCircleV`, `DrawRectangleRec`, `DrawTriangle`, etc. — no C
+shim. The one invariant that makes this work: the `out.c` kaikai
+emits must NOT `-include raylib.h`, or raylib's `Color`/`Vector2`
+typedefs collide with the ones kaikai generates. The Makefile
+only links `libraylib`; it never pulls `raylib.h` into `out.c`.
+
+Fonts are the exception. raylib's `Font` holds pointers and a
+nested `Texture2D`, so it can't be a by-value record. It goes
+through [`ffi/raylib_fonts.c`](ffi/raylib_fonts.c): a slot table
+with scalar-only entry points. That file is a separate
+translation unit that *does* include `raylib.h` and uses raylib's
+own `Color` (ABI-identical to kaikai's) in its `draw_text_ex`
+prototype.
 
 The build pipeline:
 
 ```
-*.kai  --kaic2-->  out.c  --cc-->  binary
-                              ^
-                              |
-                  ffi/raylib_shim.c (linked in via CFLAGS)
-                  ffi/raylib_shim.h (forward decls, -include'd)
+*.kai  --kaic2 (--backend=c)-->  out.c  --cc-->  binary
+                                            ^
+                                            |
+                       ffi/raylib_fonts.c (linked via CFLAGS)
+                       libraylib          (linked via CFLAGS)
 ```
 
-Each kaikai binding ([`ffi/raylib.kai`](ffi/raylib.kai)) is an
-`extern "C" pub fn` with a name override
-([issues #260 / #261](https://github.com/lnds/kaikai/pull/272))
-that decouples the kaikai-side identifier from the C symbol:
+Each binding ([`ffi/raylib.kai`](ffi/raylib.kai)) is an
+`extern "C" pub fn` with a name override binding the nice
+kaikai identifier to the raylib symbol:
 
 ```kaikai
-extern "C"("kai_raylib_init_window")
-pub fn init_window(w: Int, h: Int, title: String) : Unit / Ffi
+extern "C"("InitWindow")
+pub fn init_window(w: I32, h: I32, title: String) : Unit / Ffi
 ```
 
-The kaikai call site reads `raylib.init_window(...)`; the
-linker resolves `kai_raylib_init_window`. The prefix keeps
-the C global namespace tidy. Math axioms (`sin`, `cos`,
-`atan2`, `sqrt`) skip the override and link directly to libm
-under their bare names — no shim entry needed.
+The call site reads `raylib.init_window(...)`; the linker
+resolves `InitWindow`. `I32`/`F32` annotate the exact C width at
+the boundary while staying plain `Int`/`Real` on the kaikai side.
+Math axioms (`sin`, `cos`, `atan2`, `sqrt`) link directly to libm
+under their bare names.
 
 ## Demos
 
@@ -238,17 +270,17 @@ so a fast 180° doesn't self-collide.
 
 ## Limitations / known gotchas
 
-- **No struct support in FFI v1.** Colours go through a packed
-  `int64_t` and vectors get split into two `Real`s. A future
-  kaikai release with FFI v2 (struct-by-value, out-params) will
-  let bindings call `DrawCircleV(Vector2, ...)` etc. directly.
-- **`solar` requires `KAI_NO_STDLIB=1`.** A typer regression
-  ([kaikai#269](https://github.com/lnds/kaikai/issues/269))
-  triggered by `const x : T = V` plus the auto-loaded stdlib
-  prelude makes `solar.kai` fail to typecheck. The Makefile
-  builds it with `KAI_NO_STDLIB=1` until the fix lands; the
-  cost is losing access to `filter` / `map` / the `|` and `||`
-  pipe sugars in that one demo.
+- **`--backend=c` is required.** Struct-by-value FFI doesn't run
+  on the native (libLLVM) backend yet; it reports the gap and
+  points at the flag. The Makefile passes `--backend=c` for all
+  targets.
+- **`raylib.h` must stay out of `out.c`.** kaikai emits its own
+  `Color`/`Vector2` typedefs; pulling in `raylib.h` (e.g. via
+  `-include`) collides with them. The font shim includes
+  `raylib.h` in its own translation unit instead.
+- **`Font` isn't by-value.** Its pointers and nested texture mean
+  it can't be an `extern "C" type`, so fonts keep a slot-table
+  shim rather than crossing the boundary directly.
 
 ## License
 

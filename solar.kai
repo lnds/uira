@@ -264,12 +264,12 @@ fn push_banner(buf: Array[String], head: Ref[Int], msg: String) : Unit / Mutable
 const width  : Int = 900
 const height : Int = 700
 
-const col_bg     : Int = 0x05070dFF
-const col_text   : Int = 0xfdf9b9FF
-const col_dim    : Int = 0x6b6f5cFF
-const col_orbit  : Int = 0x202833FF
-const col_banner : Int = 0xff6f59FF
-const col_trail  : Int = 0x33394aFF
+const col_bg     : Color = rgba(0x05070dFF)
+const col_text   : Color = rgba(0xfdf9b9FF)
+const col_dim    : Color = rgba(0x6b6f5cFF)
+const col_orbit  : Color = rgba(0x202833FF)
+const col_banner : Color = rgba(0xff6f59FF)
+const col_trail  : Color = rgba(0x33394aFF)
 
 fn draw_orbit(b: Body) : Unit / Ffi = match b {
   Planet(_, dist, _, _, _) -> {
@@ -283,11 +283,11 @@ fn draw_orbit(b: Body) : Unit / Ffi = match b {
 
 fn draw_body(b: Body, x: Real, y: Real) : Unit / Ffi = match b {
   Star(_, color, r)              ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
   Planet(_, _, _, color, r)      ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
   Moon(_, _, _, _, color, r)     ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, color)
+    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
 }
 
 fn draw_orbits(bodies: Array[Body], i: Int) : Unit / Ffi = {

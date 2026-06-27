@@ -345,15 +345,15 @@ fn bounds_loop(spark: Array[Real], base: Int, k: Int,
 const width  : Int = 1000
 const height : Int = 640
 
-const col_bg     : Int = 0x0c1116FF
-const col_panel  : Int = 0x141a22FF
-const col_text   : Int = 0xeaedf3FF
-const col_dim    : Int = 0x6b7382FF
-const col_gain   : Int = 0x4ec9b0FF
-const col_loss   : Int = 0xf28b82FF
-const col_neutral: Int = 0xc4cad8FF
+const col_bg     : Color = rgba(0x0c1116FF)
+const col_panel  : Color = rgba(0x141a22FF)
+const col_text   : Color = rgba(0xeaedf3FF)
+const col_dim    : Color = rgba(0x6b7382FF)
+const col_gain   : Color = rgba(0x4ec9b0FF)
+const col_loss   : Color = rgba(0xf28b82FF)
+const col_neutral: Color = rgba(0xc4cad8FF)
 
-fn band_color(b: PnlBand) : Int = match b {
+fn band_color(b: PnlBand) : Color = match b {
   Gain    -> col_gain
   Loss    -> col_loss
   Neutral -> col_neutral

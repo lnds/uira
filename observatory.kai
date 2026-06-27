@@ -127,14 +127,14 @@ fn class_of_temp(t: Real<kelvin>) : Spectral = match t {
   _                          -> M
 }
 
-fn class_color(s: Spectral) : Int = match s {
-  O -> 0x9bb0ffFF   # blue-white
-  B -> 0xaabffeFF   # blue
-  A -> 0xcad7ffFF   # white
-  F -> 0xf8f7ffFF   # yellow-white
-  G -> 0xfff4e8FF   # yellow (Sun)
-  K -> 0xffd2a1FF   # orange
-  M -> 0xffae5cFF   # red
+fn class_color(s: Spectral) : Color = match s {
+  O -> rgba(0x9bb0ffFF)   # blue-white
+  B -> rgba(0xaabffeFF)   # blue
+  A -> rgba(0xcad7ffFF)   # white
+  F -> rgba(0xf8f7ffFF)   # yellow-white
+  G -> rgba(0xfff4e8FF)   # yellow (Sun)
+  K -> rgba(0xffd2a1FF)   # orange
+  M -> rgba(0xffae5cFF)   # red
 }
 
 fn class_label(s: Spectral) : String = match s {
@@ -197,7 +197,7 @@ fn seed_x(i: Int) : Real = {
 #   v = sqrt(G/r)   in au/day
 # We compute this once at seed time so the orbits stay roughly
 # circular even with the leapfrog integrator's small drift.
-fn seed_vy(i: Int) : Real = {
+fn seed_vy(i: Int) : Real / Ffi = {
   if i == 0 { 0.0 }
   else {
     let r = seed_x(i)
@@ -236,15 +236,15 @@ fn body_name(i: Int) : String = {
   else           { "Neptuno" }
 }
 
-fn body_color(i: Int) : Int = {
-  if i == 0      { 0xffd166FF }       # Sun
-  else if i == 1 { 0xb08968FF }
-  else if i == 2 { 0xefcb68FF }
-  else if i == 3 { 0x4ea1ffFF }
-  else if i == 4 { 0xff6b6bFF }
-  else if i == 5 { 0xfca311FF }
-  else if i == 6 { 0xe0c590FF }
-  else           { 0x90c8e0FF }
+fn body_color(i: Int) : Color = {
+  if i == 0      { rgba(0xffd166FF) }       # Sun
+  else if i == 1 { rgba(0xb08968FF) }
+  else if i == 2 { rgba(0xefcb68FF) }
+  else if i == 3 { rgba(0x4ea1ffFF) }
+  else if i == 4 { rgba(0xff6b6bFF) }
+  else if i == 5 { rgba(0xfca311FF) }
+  else if i == 6 { rgba(0xe0c590FF) }
+  else           { rgba(0x90c8e0FF) }
 }
 
 # ----- N-body integrator: leapfrog (kick-drift-kick) -----
@@ -553,12 +553,12 @@ fn star_dec_deg(i: Int) : Real = {
 const width  : Int = 1100
 const height : Int = 700
 
-const col_bg     : Int = 0x06080cFF
-const col_panel  : Int = 0x101620FF
-const col_text   : Int = 0xeaedf3FF
-const col_dim    : Int = 0x6b7382FF
-const col_accent : Int = 0xfca311FF
-const col_grid   : Int = 0x1a2030FF
+const col_bg     : Color = rgba(0x06080cFF)
+const col_panel  : Color = rgba(0x101620FF)
+const col_text   : Color = rgba(0xeaedf3FF)
+const col_dim    : Color = rgba(0x6b7382FF)
+const col_accent : Color = rgba(0xfca311FF)
+const col_grid   : Color = rgba(0x1a2030FF)
 
 # ----- mode N-body view -----
 
@@ -660,7 +660,7 @@ fn trail_seg_loop(trails: Array[Real], head: Int, s: Real,
       let x2 = cx + x2r * s
       let y2 = cy + y2r * s
       raylib.draw_line(real_to_int(x1), real_to_int(y1),
-                       real_to_int(x2), real_to_int(y2), 0x303040FF)
+                       real_to_int(x2), real_to_int(y2), raylib.rgba(0x303040FF))
     }
     trail_seg_loop(trails, head, s, i, k + 1)
   }

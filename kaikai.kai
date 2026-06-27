@@ -228,11 +228,11 @@ const cx     : Real = 400.0
 const cy     : Real = 320.0
 const scale  : Real = 180.0  # local units -> pixels
 
-const col_bg     : Int = 0x0a1418FF
-const col_cord   : Int = 0xfdf9b9FF
-const col_finger : Int = 0xff6f59FF
-const col_text   : Int = 0xfdf9b9FF
-const col_dim    : Int = 0x6b6f5cFF
+const col_bg     : Color = rgba(0x0a1418FF)
+const col_cord   : Color = rgba(0xfdf9b9FF)
+const col_finger : Color = rgba(0xff6f59FF)
+const col_text   : Color = rgba(0xfdf9b9FF)
+const col_dim    : Color = rgba(0x6b6f5cFF)
 
 # Project a local-frame (lx, ly) to world space, given the global
 # rotation (ct, st) = (cos spin, sin spin). The output cells let

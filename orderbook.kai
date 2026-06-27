@@ -312,16 +312,16 @@ fn clear_book(n_bids: Ref[Int], n_asks: Ref[Int],
 const width  : Int = 1000
 const height : Int = 640
 
-const col_bg     : Int = 0x0a0e14FF
-const col_panel  : Int = 0x121822FF
-const col_text   : Int = 0xeaedf3FF
-const col_dim    : Int = 0x6b7382FF
-const col_bid    : Int = 0x4ec9b0FF
-const col_ask    : Int = 0xf28b82FF
-const col_grid   : Int = 0x1f2632FF
-const col_accent : Int = 0xfca311FF
+const col_bg     : Color = rgba(0x0a0e14FF)
+const col_panel  : Color = rgba(0x121822FF)
+const col_text   : Color = rgba(0xeaedf3FF)
+const col_dim    : Color = rgba(0x6b7382FF)
+const col_bid    : Color = rgba(0x4ec9b0FF)
+const col_ask    : Color = rgba(0xf28b82FF)
+const col_grid   : Color = rgba(0x1f2632FF)
+const col_accent : Color = rgba(0xfca311FF)
 
-fn side_color(s: Side) : Int = match s {
+fn side_color(s: Side) : Color = match s {
   Buy  -> col_bid
   Sell -> col_ask
 }
@@ -347,7 +347,7 @@ fn max_qty(qtys: Array[Int], n: Int, i: Int, acc: Int) : Int = {
 }
 
 fn draw_book_side(prices: Array[Int], qtys: Array[Int], n: Int,
-                  x: Int, color: Int, label: String) : Unit / Ffi = {
+                  x: Int, color: Color, label: String) : Unit / Ffi = {
   raylib.draw_text(label, x, ladder_y - 24, 16, color)
   raylib.draw_text("price    qty   bar", x, ladder_y - 6, 11, col_dim)
   let m = max_qty(qtys, n, 0, 1)
@@ -355,7 +355,7 @@ fn draw_book_side(prices: Array[Int], qtys: Array[Int], n: Int,
 }
 
 fn draw_book_rows(prices: Array[Int], qtys: Array[Int], n: Int,
-                  x: Int, color: Int, m: Int, i: Int) : Unit / Ffi = {
+                  x: Int, color: Color, m: Int, i: Int) : Unit / Ffi = {
   if i >= n { () }
   else {
     let y = ladder_y + 12 + i * row_h
@@ -519,7 +519,7 @@ fn producer_buy(engine: Pid[Order],
     Actor.send(engine, LimitOrder(Buy, p, q))
   } else { () }
   burn_cycles(@pace_period)
-  fiber_yield()
+  spawn.yield()
   producer_buy(engine, pace_period, paused)
 }
 
@@ -533,7 +533,7 @@ fn producer_sell(engine: Pid[Order],
     Actor.send(engine, LimitOrder(Sell, p, q))
   } else { () }
   burn_cycles(@pace_period)
-  fiber_yield()
+  spawn.yield()
   producer_sell(engine, pace_period, paused)
 }
 
@@ -542,7 +542,7 @@ fn producer_sell(engine: Pid[Order],
 # is adjustable.
 fn burn_cycles(n: Int) : Unit / Spawn = {
   if n <= 0 { () }
-  else { fiber_yield(); burn_cycles(n - 1) }
+  else { spawn.yield(); burn_cycles(n - 1) }
 }
 
 # ---- matching engine ----
@@ -633,7 +633,7 @@ fn frame_loop(paused: Ref[Int],
     raylib.end_drawing()
 
     # ---- yield: let the producers + engine make progress ----
-    fiber_yield()
+    spawn.yield()
   }
 }
 
@@ -672,9 +672,9 @@ fn run() : Unit / Ffi + Actor[Order] + Spawn + Mutable = {
   # body once per tick. Wrapping it in a single-line lambda
   # keeps the parser happy.
   let engine_thunk = () => matching_engine(seq, total_orders, total_fills, total_volume, bid_prices, bid_qtys, n_bids, ask_prices, ask_qtys, n_asks, fill_prices, fill_qtys, fill_sides, fill_seqs, fhead, fcount)
-  let _ = fiber_spawn(engine_thunk)
-  let _ = fiber_spawn(() => producer_buy(engine, pace_period, paused))
-  let _ = fiber_spawn(() => producer_sell(engine, pace_period, paused))
+  let _ = spawn.spawn(engine_thunk)
+  let _ = spawn.spawn(() => producer_buy(engine, pace_period, paused))
+  let _ = spawn.spawn(() => producer_sell(engine, pace_period, paused))
 
   frame_loop(paused, pace_period,
              total_orders, total_fills, total_volume,

@@ -61,29 +61,29 @@ fn iter_loop(c: Complex, z: Complex, n: Int) : Int {
 
 const palette_stops : Int = 16
 
-fn palette(idx: Int) : Int {
-  if idx == 0       { 0x000a2eFF }
-  else if idx == 1  { 0x0a1a4eFF }
-  else if idx == 2  { 0x10307aFF }
-  else if idx == 3  { 0x1a4a9eFF }
-  else if idx == 4  { 0x2470b8FF }
-  else if idx == 5  { 0x36a0c8FF }
-  else if idx == 6  { 0x60c8c0FF }
-  else if idx == 7  { 0x90d8a8FF }
-  else if idx == 8  { 0xb8d088FF }
-  else if idx == 9  { 0xd8b860FF }
-  else if idx == 10 { 0xe8a040FF }
-  else if idx == 11 { 0xf28028FF }
-  else if idx == 12 { 0xf86018FF }
-  else if idx == 13 { 0xfc8c40FF }
-  else if idx == 14 { 0xfdc680FF }
-  else              { 0xffffe0FF }
+fn palette(idx: Int) : Color {
+  if idx == 0       { raylib.rgba(0x000a2eFF) }
+  else if idx == 1  { raylib.rgba(0x0a1a4eFF) }
+  else if idx == 2  { raylib.rgba(0x10307aFF) }
+  else if idx == 3  { raylib.rgba(0x1a4a9eFF) }
+  else if idx == 4  { raylib.rgba(0x2470b8FF) }
+  else if idx == 5  { raylib.rgba(0x36a0c8FF) }
+  else if idx == 6  { raylib.rgba(0x60c8c0FF) }
+  else if idx == 7  { raylib.rgba(0x90d8a8FF) }
+  else if idx == 8  { raylib.rgba(0xb8d088FF) }
+  else if idx == 9  { raylib.rgba(0xd8b860FF) }
+  else if idx == 10 { raylib.rgba(0xe8a040FF) }
+  else if idx == 11 { raylib.rgba(0xf28028FF) }
+  else if idx == 12 { raylib.rgba(0xf86018FF) }
+  else if idx == 13 { raylib.rgba(0xfc8c40FF) }
+  else if idx == 14 { raylib.rgba(0xfdc680FF) }
+  else              { raylib.rgba(0xffffe0FF) }
 }
 
 # Map an iter count to a colour. Interior points (n == max_iter)
 # get pure black; the rest indexes evenly into the palette.
-fn color_for(n: Int) : Int {
-  if n >= max_iter { 0x000000FF }
+fn color_for(n: Int) : Color {
+  if n >= max_iter { raylib.rgba(0x000000FF) }
   else { palette((n * palette_stops) / max_iter) }
 }
 
@@ -189,8 +189,8 @@ fn reset_view(re_min: Ref[Real], re_max: Ref[Real],
 # ============================================================
 
 const px : Int = 2          # pixel size on screen (cw*px = 800)
-const col_bg : Int = 0x000010FF
-const col_text : Int = 0xfdf9b9FF
+const col_bg : Color = rgba(0x000010FF)
+const col_text : Color = rgba(0xfdf9b9FF)
 
 fn draw_buffer(buf: Array[Int]) : Unit / Ffi = {
   var i = 0

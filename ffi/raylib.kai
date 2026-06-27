@@ -1,100 +1,114 @@
-# Shared raylib FFI bindings.
+# raylib FFI bindings (FFI v2).
 #
-# Each binding uses the spec FFI form `extern "C" pub fn` (issue
-# #260) with a name override (issue #261) so the kaikai-side
-# identifier is `init_window` while the C symbol is
-# `kai_raylib_init_window`. The prefix avoids polluting the C
-# global namespace with bare identifiers like `init_window`,
-# `draw_line`, `is_key_pressed`, etc.
+# Color/Vector2 cross by value as `extern "C" type` records whose
+# fields are ABI-identical to raylib's own structs, so the bindings
+# link straight to raylib (DrawCircleV, ClearBackground, …) with no
+# C shim. The trick: the emitted out.c must NOT `-include raylib.h`,
+# or its generated `Color`/`Vector2` typedefs collide with raylib's.
+# kaikai's structs and raylib's share layout; the linker bridges them.
 #
-# Math axioms (sin / cos / atan2 / sqrt) link directly to libm
-# under their bare names — no shim entry needed.
+# Fonts are the exception: raylib's `Font` holds pointers and a
+# nested `Texture2D`, so it can't be an `extern "C" type`. It goes
+# through the tiny `ffi/raylib_fonts.c` shim, which keeps a slot
+# table and exposes scalar-only entry points. Slot -1 means "no
+# custom font" — draw_text_ex falls back to DrawText.
+#
+# Math (sin/cos/atan2/sqrt) links directly to libm under bare names.
+
+# ----- boundary types -----
+
+extern "C" type Color   = { r: U8, g: U8, b: U8, a: U8 }
+extern "C" type Vector2 = { x: F32, y: F32 }
+extern "C" type Rect    = { x: F32, y: F32, w: F32, h: F32 }
+
+# Pack a 0xRRGGBBAA literal into a Color. Lets call sites keep
+# writing colors as hex while a real struct crosses the boundary.
+pub fn rgba(p: Int) : Color =
+  Color {
+    r: (p / 16777216) % 256,
+    g: (p / 65536) % 256,
+    b: (p / 256) % 256,
+    a: p % 256,
+  }
 
 # ----- window / lifecycle -----
 
-extern "C"("kai_raylib_init_window")
-pub fn init_window(w: Int, h: Int, title: String) : Unit / Ffi
+extern "C"("InitWindow")
+pub fn init_window(w: I32, h: I32, title: String) : Unit / Ffi
 
-extern "C"("kai_raylib_close_window")
+extern "C"("CloseWindow")
 pub fn close_window() : Unit / Ffi
 
-extern "C"("kai_raylib_window_should_close")
+extern "C"("WindowShouldClose")
 pub fn window_should_close() : Bool / Ffi
 
-extern "C"("kai_raylib_set_target_fps")
-pub fn set_target_fps(fps: Int) : Unit / Ffi
+extern "C"("SetTargetFPS")
+pub fn set_target_fps(fps: I32) : Unit / Ffi
 
-extern "C"("kai_raylib_get_fps")
-pub fn get_fps() : Int / Ffi
+extern "C"("GetFPS")
+pub fn get_fps() : I32 / Ffi
 
-extern "C"("kai_raylib_get_time")
+extern "C"("GetTime")
 pub fn get_time() : Real / Ffi
 
 # ----- frame -----
 
-extern "C"("kai_raylib_begin_drawing")
+extern "C"("BeginDrawing")
 pub fn begin_drawing() : Unit / Ffi
 
-extern "C"("kai_raylib_end_drawing")
+extern "C"("EndDrawing")
 pub fn end_drawing() : Unit / Ffi
 
-extern "C"("kai_raylib_clear_background")
-pub fn clear_background(color: Int) : Unit / Ffi
+extern "C"("ClearBackground")
+pub fn clear_background(color: Color) : Unit / Ffi
 
 # ----- shapes / text -----
 
-extern "C"("kai_raylib_draw_rectangle")
-pub fn draw_rectangle(x: Int, y: Int, w: Int, h: Int, color: Int) : Unit / Ffi
+extern "C"("DrawRectangle")
+pub fn draw_rectangle(x: I32, y: I32, w: I32, h: I32, color: Color) : Unit / Ffi
 
-extern "C"("kai_raylib_draw_pixel")
-pub fn draw_pixel(x: Int, y: Int, color: Int) : Unit / Ffi
+extern "C"("DrawPixel")
+pub fn draw_pixel(x: I32, y: I32, color: Color) : Unit / Ffi
 
-extern "C"("kai_raylib_draw_text")
-pub fn draw_text(s: String, x: Int, y: Int, size: Int, color: Int) : Unit / Ffi
+extern "C"("DrawText")
+pub fn draw_text(s: String, x: I32, y: I32, size: I32, color: Color) : Unit / Ffi
 
-extern "C"("kai_raylib_draw_triangle")
-pub fn draw_triangle(x1: Real, y1: Real, x2: Real, y2: Real,
-                     x3: Real, y3: Real, color: Int) : Unit / Ffi
+extern "C"("DrawTriangle")
+pub fn draw_triangle_v(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) : Unit / Ffi
 
-extern "C"("kai_raylib_draw_line")
-pub fn draw_line(x1: Int, y1: Int, x2: Int, y2: Int, color: Int) : Unit / Ffi
+extern "C"("DrawLine")
+pub fn draw_line(x1: I32, y1: I32, x2: I32, y2: I32, color: Color) : Unit / Ffi
 
-extern "C"("kai_raylib_draw_circle")
-pub fn draw_circle(x: Int, y: Int, r: Real, color: Int) : Unit / Ffi
+extern "C"("DrawCircle")
+pub fn draw_circle(x: I32, y: I32, r: F32, color: Color) : Unit / Ffi
 
 # ----- input -----
 
-extern "C"("kai_raylib_is_key_pressed")
-pub fn is_key_pressed(key: Int) : Bool / Ffi
+extern "C"("IsKeyPressed")
+pub fn is_key_pressed(key: I32) : Bool / Ffi
 
 # ----- random -----
 
-extern "C"("kai_raylib_set_random_seed")
-pub fn set_random_seed(s: Int) : Unit / Ffi
+extern "C"("SetRandomSeed")
+pub fn set_random_seed(s: I32) : Unit / Ffi
 
-extern "C"("kai_raylib_get_random_value")
-pub fn get_random_value(min: Int, max: Int) : Int / Ffi
+extern "C"("GetRandomValue")
+pub fn get_random_value(min: I32, max: I32) : I32 / Ffi
 
-# ----- fonts -----
-#
-# Load a TTF / OTF font from disk at a given pixel size and
-# return an opaque slot (Int) the caller passes back to
-# `draw_text_ex`. Up to 4 fonts can be loaded at once. Slot
-# value -1 means "no custom font, use the default bitmap one"
-# — `draw_text_ex(-1, ...)` falls back to `draw_text`.
+# ----- fonts (slot table in ffi/raylib_fonts.c) -----
 
 extern "C"("kai_raylib_load_font")
-pub fn load_font(path: String, size: Int) : Int / Ffi
+pub fn load_font(path: String, size: I32) : Int / Ffi
 
 extern "C"("kai_raylib_unload_font")
 pub fn unload_font(slot: Int) : Unit / Ffi
 
 extern "C"("kai_raylib_draw_text_ex")
 pub fn draw_text_ex(slot: Int, s: String,
-                    x: Int, y: Int, size: Int,
-                    spacing: Real, color: Int) : Unit / Ffi
+                    x: I32, y: I32, size: I32,
+                    spacing: F32, color: Color) : Unit / Ffi
 
-# ----- math (libm direct, no shim) -----
+# ----- math (libm direct) -----
 
 extern "C" pub fn sin(x: Real) : Real / Ffi
 extern "C" pub fn cos(x: Real) : Real / Ffi

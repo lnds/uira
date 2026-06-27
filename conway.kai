@@ -182,9 +182,9 @@ fn other(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
 const cell_size : Int = 10
 
 # Packed RGBA: 0xRRGGBBAA.
-const col_bg    : Int = 0x14141eFF
-const col_alive : Int = 0x6cfff5FF
-const col_text  : Int = 0xfdf9b9FF
+const col_bg    : Color = rgba(0x14141eFF)
+const col_alive : Color = rgba(0x6cfff5FF)
+const col_text  : Color = rgba(0xfdf9b9FF)
 
 fn draw_cells(g: Array[Bool]) : Unit / Ffi {
   var i = 0
@@ -223,7 +223,7 @@ const key_c     : Int = 67
 
 const step_every : Int = 6   # 60 fps / 6 = 10 generations/sec
 
-fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi {
+fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi + Mutable {
   var which = 0
   var gen = 0
   var frame = 0
