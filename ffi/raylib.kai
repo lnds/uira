@@ -108,6 +108,88 @@ pub fn draw_text_ex(slot: Int, s: String,
                     x: I32, y: I32, size: I32,
                     spacing: F32, color: Color) : Unit / Ffi
 
+# ----- audio (slot tables in ffi/raylib_audio.c) -----
+#
+# Sound and Music embed an AudioStream with internal pointers, so
+# like Font they can't cross by value: the shim keeps slot tables
+# and hands back Int slots. A slot of -1 (table full / asset
+# invalid) makes every play/stop/volume call a harmless no-op.
+
+extern "C"("kai_raylib_init_audio")
+pub fn init_audio_device() : Unit / Ffi
+
+extern "C"("kai_raylib_close_audio")
+pub fn close_audio_device() : Unit / Ffi
+
+extern "C"("kai_raylib_audio_ready")
+pub fn audio_device_ready() : Bool / Ffi
+
+extern "C"("kai_raylib_set_master_volume")
+pub fn set_master_volume(volume: F32) : Unit / Ffi
+
+# Sounds (short SFX, fully loaded in memory).
+
+extern "C"("kai_raylib_load_sound")
+pub fn load_sound(path: String) : Int / Ffi
+
+# Synthesise a mono sine of `seconds` at `freq` Hz (amp 0..1) into a
+# Sound — no file needed. Returns a slot, or -1.
+extern "C"("kai_raylib_gen_tone")
+pub fn gen_tone(freq: F32, seconds: F32, amp: F32) : Int / Ffi
+
+extern "C"("kai_raylib_play_sound")
+pub fn play_sound(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_stop_sound")
+pub fn stop_sound(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_sound_playing")
+pub fn sound_playing(slot: Int) : Bool / Ffi
+
+extern "C"("kai_raylib_set_sound_volume")
+pub fn set_sound_volume(slot: Int, volume: F32) : Unit / Ffi
+
+extern "C"("kai_raylib_set_sound_pitch")
+pub fn set_sound_pitch(slot: Int, pitch: F32) : Unit / Ffi
+
+extern "C"("kai_raylib_unload_sound")
+pub fn unload_sound(slot: Int) : Unit / Ffi
+
+# Music (long tracks, streamed; call update_music every frame).
+
+extern "C"("kai_raylib_load_music")
+pub fn load_music(path: String) : Int / Ffi
+
+extern "C"("kai_raylib_play_music")
+pub fn play_music(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_update_music")
+pub fn update_music(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_stop_music")
+pub fn stop_music(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_pause_music")
+pub fn pause_music(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_resume_music")
+pub fn resume_music(slot: Int) : Unit / Ffi
+
+extern "C"("kai_raylib_music_playing")
+pub fn music_playing(slot: Int) : Bool / Ffi
+
+extern "C"("kai_raylib_set_music_volume")
+pub fn set_music_volume(slot: Int, volume: F32) : Unit / Ffi
+
+extern "C"("kai_raylib_set_music_looping")
+pub fn set_music_looping(slot: Int, on: Bool) : Unit / Ffi
+
+extern "C"("kai_raylib_seek_music")
+pub fn seek_music(slot: Int, position: F32) : Unit / Ffi
+
+extern "C"("kai_raylib_unload_music")
+pub fn unload_music(slot: Int) : Unit / Ffi
+
 # ----- math (libm direct) -----
 
 extern "C" pub fn sin(x: Real) : Real / Ffi

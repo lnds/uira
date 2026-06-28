@@ -29,13 +29,33 @@ El hallazgo clave es que el shim C es casi totalmente innecesario:
   TU, sus typedefs homónimos chocan (`typedef redefinition`). Por eso el
   Makefile NO pasa `-include raylib.h`: solo enlaza contra `libraylib`.
 
-- **Fonts son la excepción.** `Font` de raylib tiene punteros y una
-  `Texture2D` anidada, así que no puede ser un `extern "C" type`. Va por
-  `ffi/raylib_fonts.c`: una tabla de slots con entry points escalares.
-  Ese shim SÍ incluye `raylib.h` (necesita `LoadFontEx`/`DrawTextEx`),
-  pero es un TU separado, y declara `draw_text_ex` con el `Color` de
-  raylib — ABI-compatible con el que pasa kaikai. Slot `-1` = fuente
-  default (cae a `DrawText`).
+- **Fonts y audio son la excepción.** `Font` de raylib tiene punteros y
+  una `Texture2D` anidada; `Sound` y `Music` embeben un `AudioStream` con
+  punteros a los internals de raudio. Ninguno puede ser un
+  `extern "C" type`, así que cada uno va por su shim de tabla de slots
+  (`ffi/raylib_fonts.c`, `ffi/raylib_audio.c`) con entry points
+  escalares. Esos shims SÍ incluyen `raylib.h` (necesitan
+  `LoadFontEx`/`DrawTextEx`, `LoadSound`/`PlayMusicStream`, el struct
+  `Wave`, …), pero son TUs separados; el de fonts declara `draw_text_ex`
+  con el `Color` de raylib — ABI-compatible con el que pasa kaikai. Slot
+  `-1` = recurso inválido / tabla llena: en fonts cae a `DrawText`, en
+  audio cada play/stop/volume es un no-op inofensivo.
+
+## Audio (SFX + música)
+
+El módulo de audio sigue al pie de la letra el patrón de fonts:
+
+- **Sounds** (SFX cortos cargados completos en RAM) y **Music** (stream;
+  hay que llamar `update_music` cada frame) viven en tablas de slots en
+  `ffi/raylib_audio.c`. Los loaders devuelven `Int` (slot o `-1`).
+- `gen_tone(freq, seconds, amp)` sintetiza una sinusoidal mono a un
+  `Sound` vía `LoadSoundFromWave` — sin archivo en disco. Lo usa el demo
+  `audiopad`, que así queda autocontenido (no commitea `.wav`/`.ogg`).
+- `set_music_looping(slot, on: Bool)` confirma que `Bool` cruza como
+  parámetro del FFI v2 (kaikai lo emite como entero al `int64_t` del
+  shim): el demo compila y enlaza limpio.
+- Para música de fondo desde archivo, el call site aporta el `.ogg`/
+  `.mp3`/`.wav`; raylib lo decodifica. El README trae el loop mínimo.
 
 ## API que ven los demos
 
@@ -78,7 +98,8 @@ aritmética kaikai). Patrones de migración aplicados:
 
 ## Verificación
 
-`make` compila los 9 demos desde cero sin warnings. Confirmación visual
+`make` compila los 10 demos desde cero sin warnings. Confirmación visual
 vía screenshot de snake (formas + texto default) y observatory (fuente
 TTF custom por el shim de fonts + colores espectrales): ambos renderizan
-correctos.
+correctos. El demo `audiopad` arranca, `InitAudioDevice` inicializa Core
+Audio y los ocho tonos se sintetizan sin fallar (smoke test).

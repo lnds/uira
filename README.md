@@ -6,16 +6,17 @@
 A small [raylib](https://www.raylib.com/) FFI binding for
 [kaikai](https://kaikai-lang.org/), built on the FFI v2 features
 (struct-by-value, fixed-width boundary types). Ships the binding
-as a reusable module plus nine demos that exercise it.
+as a reusable module plus ten demos that exercise it.
 
 The binding covers the slice of raylib needed for 2D games and
 visualisations: window lifecycle, frame loop, basic shapes,
-text, input, random, and a handful of math helpers. `Color`,
-`Vector2` and `Rectangle` cross the boundary by value as
-`extern "C" type` records whose layout matches raylib's, so the
-bindings link straight to raylib with no C shim. The one
-exception is fonts: raylib's `Font` holds pointers, so it goes
-through a tiny slot-table shim (`ffi/raylib_fonts.c`). See
+text, input, random, audio (SFX + music), and a handful of math
+helpers. `Color`, `Vector2` and `Rectangle` cross the boundary
+by value as `extern "C" type` records whose layout matches
+raylib's, so the bindings link straight to raylib with no C shim.
+The exceptions are fonts and audio: raylib's `Font`, `Sound` and
+`Music` hold pointers, so each goes through a tiny slot-table
+shim (`ffi/raylib_fonts.c`, `ffi/raylib_audio.c`). See
 [docs/ffi-v2-migration.md](docs/ffi-v2-migration.md) for the
 design.
 
@@ -25,7 +26,8 @@ design.
 uira/
 ├── ffi/
 │   ├── raylib.kai        # kaikai-side bindings (raylib direct)
-│   └── raylib_fonts.c    # font slot-table shim (Font isn't by-value)
+│   ├── raylib_fonts.c    # font slot-table shim (Font isn't by-value)
+│   └── raylib_audio.c    # audio slot-table shim (Sound/Music aren't by-value)
 ├── conway.kai            # demo: Game of Life
 ├── boids.kai             # demo: Reynolds flocking
 ├── mandelbrot.kai        # demo: Mandelbrot explorer (pan + zoom)
@@ -34,6 +36,7 @@ uira/
 ├── portfolio.kai         # demo: P&L dashboard
 ├── orderbook.kai         # demo: matching engine (actors)
 ├── observatory.kai       # demo: N-body / HR diagram / parallax
+├── audiopad.kai          # demo: one-octave synth keyboard (audio)
 ├── kaikai.kai            # demo: morphing logo
 ├── Makefile
 └── README.md
@@ -55,9 +58,10 @@ uira/
 ## Build & run
 
 ```sh
-make                  # all 7 demos -> ./build/
+make                  # all 10 demos -> ./build/
 make conway           # one at a time
 make run-snake        # build and run
+make run-audiopad     # the audio demo
 ```
 
 Or invoke the binaries directly under `./build/`.
@@ -143,6 +147,71 @@ in `ffi/raylib_fonts.c`. `load_font` returns a slot (or `-1`);
 | `unload_font(slot)`                            | `kai_raylib_unload_font`  |
 | `draw_text_ex(slot, s, x, y, size, spacing, color)` | `kai_raylib_draw_text_ex` |
 
+### Audio
+
+`Sound` and `Music` embed an `AudioStream` with internal pointers,
+so like `Font` they go through a slot table
+(`ffi/raylib_audio.c`). Call `init_audio_device()` once before
+loading anything. Loaders return a slot (or `-1` when the table
+is full or the asset is invalid); every play/stop/volume call is a
+no-op on a `-1` slot, so the error propagates harmlessly.
+
+**Sounds** are short SFX, loaded whole into memory:
+
+| `pub fn`                            | raylib            |
+| ----------------------------------- | ----------------- |
+| `init_audio_device()`               | `InitAudioDevice` |
+| `close_audio_device()`              | `CloseAudioDevice` |
+| `audio_device_ready()`              | `IsAudioDeviceReady` |
+| `set_master_volume(v)`              | `SetMasterVolume` |
+| `load_sound(path)`                  | `LoadSound`       |
+| `gen_tone(freq, seconds, amp)`      | `LoadSoundFromWave` (synth) |
+| `play_sound(slot)`                  | `PlaySound`       |
+| `stop_sound(slot)`                  | `StopSound`       |
+| `sound_playing(slot)`               | `IsSoundPlaying`  |
+| `set_sound_volume(slot, v)`         | `SetSoundVolume`  |
+| `set_sound_pitch(slot, p)`          | `SetSoundPitch`   |
+| `unload_sound(slot)`                | `UnloadSound`     |
+
+`gen_tone` synthesises a mono sine straight to a `Sound` (no file
+needed) — handy for placeholder SFX; it's what `audiopad.kai` uses.
+
+**Music** is streamed; `update_music(slot)` must run every frame
+to refill the buffers:
+
+| `pub fn`                            | raylib            |
+| ----------------------------------- | ----------------- |
+| `load_music(path)`                  | `LoadMusicStream` |
+| `play_music(slot)`                  | `PlayMusicStream` |
+| `update_music(slot)`                | `UpdateMusicStream` |
+| `stop_music(slot)`                  | `StopMusicStream` |
+| `pause_music(slot)`                 | `PauseMusicStream` |
+| `resume_music(slot)`                | `ResumeMusicStream` |
+| `music_playing(slot)`               | `IsMusicStreamPlaying` |
+| `set_music_volume(slot, v)`         | `SetMusicVolume`  |
+| `set_music_looping(slot, on)`       | (sets `Music.looping`) |
+| `seek_music(slot, seconds)`         | `SeekMusicStream` |
+| `unload_music(slot)`                | `UnloadMusicStream` |
+
+raylib decodes by file extension: `.wav`, `.ogg`, `.mp3`, `.flac`,
+`.qoa`, `.xm` and `.mod`. A minimal background-music loop:
+
+```kaikai
+raylib.init_audio_device()
+let song = raylib.load_music("assets/theme.ogg")
+raylib.set_music_looping(song, true)
+raylib.play_music(song)
+
+until { raylib.window_should_close() } {
+  raylib.update_music(song)   # required every frame
+  raylib.begin_drawing()
+  # ... draw ...
+  raylib.end_drawing()
+}
+raylib.unload_music(song)
+raylib.close_audio_device()
+```
+
 ### Input
 
 | `pub fn`                | raylib              |
@@ -194,6 +263,7 @@ The build pipeline:
                                             ^
                                             |
                        ffi/raylib_fonts.c (linked via CFLAGS)
+                       ffi/raylib_audio.c (linked via CFLAGS)
                        libraylib          (linked via CFLAGS)
 ```
 
@@ -268,6 +338,20 @@ modulo `max_body`), so growing on apple-eat is just "don't
 advance the tail". Input is buffered to the next step boundary
 so a fast 180° doesn't self-collide.
 
+### Audio pad — `audiopad.kai`
+
+| Key             | Action                  |
+| --------------- | ----------------------- |
+| A S D F G H J K | Play a note (do…do)     |
+| Up / Down       | Transpose by an octave  |
+| `+` / `-`       | Master volume           |
+| ESC             | Quit                    |
+
+A one-octave C-major keyboard. The eight tones are synthesised in
+memory at startup with `gen_tone` (one `Sound` per note), so the
+demo needs no audio files on disk; transposing re-generates them
+for the new octave. Doubles as the smoke test for the audio shim.
+
 ## Limitations / known gotchas
 
 - **`--backend=c` is required.** Struct-by-value FFI doesn't run
@@ -278,9 +362,11 @@ so a fast 180° doesn't self-collide.
   `Color`/`Vector2` typedefs; pulling in `raylib.h` (e.g. via
   `-include`) collides with them. The font shim includes
   `raylib.h` in its own translation unit instead.
-- **`Font` isn't by-value.** Its pointers and nested texture mean
-  it can't be an `extern "C" type`, so fonts keep a slot-table
-  shim rather than crossing the boundary directly.
+- **`Font`, `Sound` and `Music` aren't by-value.** Their pointers
+  (and `Font`'s nested texture, `Sound`/`Music`'s embedded
+  `AudioStream`) mean they can't be `extern "C" type` records, so
+  each keeps a slot-table shim rather than crossing the boundary
+  directly.
 
 ## License
 

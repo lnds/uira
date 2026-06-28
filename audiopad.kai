@@ -1,0 +1,256 @@
+# Audio pad — kaikai + raylib audio showcase
+#
+# A one-octave keyboard. Eight keys (A S D F G H J K) each play a
+# note of the C-major scale; the tones are synthesised in memory at
+# startup (gen_tone → a Sound per note), so the demo needs no audio
+# files on disk. Up/Down transpose the whole pad by an octave; the
+# top of the window shows master volume, tweakable with -/+.
+#
+# Layout mirrors the other demos:
+#   1. ===== MODEL =====  note frequencies, key→note mapping. Pure.
+#   2. ===== STATE =====  the per-note Sound slots + lit timers,
+#                          master volume, octave shift. Ref cells.
+#   3. ===== VIEW  =====  raylib rendering of the key bar + HUD.
+#
+# Controls:
+#   A S D F G H J K   tocar notas (do re mi fa sol la si do)
+#   up / down         transponer una octava
+#   - / +             volumen maestro
+#   ESC               salir
+
+import ffi.raylib
+import loop
+
+# ============================================================
+#  1. ===== MODEL ===============================================
+# ============================================================
+
+const note_count : Int = 8
+
+# C-major scale starting at C4 (261.63 Hz), rounded to whole Hz —
+# the ear won't tell, and gen_tone takes an F32 anyway.
+fn base_freq(i: Int) : Real {
+  if i == 0 { 262.0 }        # C4  do
+  else if i == 1 { 294.0 }   # D4  re
+  else if i == 2 { 330.0 }   # E4  mi
+  else if i == 3 { 349.0 }   # F4  fa
+  else if i == 4 { 392.0 }   # G4  sol
+  else if i == 5 { 440.0 }   # A4  la
+  else if i == 6 { 494.0 }   # B4  si
+  else { 523.0 }             # C5  do
+}
+
+# Note label drawn under each key.
+fn note_label(i: Int) : String {
+  if i == 0 { "do" }
+  else if i == 1 { "re" }
+  else if i == 2 { "mi" }
+  else if i == 3 { "fa" }
+  else if i == 4 { "sol" }
+  else if i == 5 { "la" }
+  else if i == 6 { "si" }
+  else { "do" }
+}
+
+# Letter key that triggers each note (the home row).
+fn key_label(i: Int) : String {
+  if i == 0 { "A" }
+  else if i == 1 { "S" }
+  else if i == 2 { "D" }
+  else if i == 3 { "F" }
+  else if i == 4 { "G" }
+  else if i == 5 { "H" }
+  else if i == 6 { "J" }
+  else { "K" }
+}
+
+# raylib keycode for each note's key (ASCII of the uppercase letter).
+fn key_code(i: Int) : Int {
+  if i == 0 { 65 }       # A
+  else if i == 1 { 83 }  # S
+  else if i == 2 { 68 }  # D
+  else if i == 3 { 70 }  # F
+  else if i == 4 { 71 }  # G
+  else if i == 5 { 72 }  # H
+  else if i == 6 { 74 }  # J
+  else { 75 }            # K
+}
+
+# Octave multiplier: shift -1/0/+1 octaves → 0.5x / 1x / 2x.
+fn octave_mul(shift: Int) : Real {
+  if shift <= 0 - 1 { 0.5 }
+  else if shift >= 1 { 2.0 }
+  else { 1.0 }
+}
+
+# ============================================================
+#  2. ===== STATE ===============================================
+#
+#  One Sound slot per note (re-generated whenever the octave
+#  changes) plus a "lit" countdown per note so a struck key glows
+#  for a few frames. Master volume and octave shift are scalars in
+#  Ref cells.
+# ============================================================
+
+const lit_frames : Int = 10
+
+# (Re)generate the eight tones for the current octave. Unloads any
+# previous Sound in the slot first so we don't leak the slot table.
+fn build_tones(slots: Array[Int], shift: Int) : Unit / Ffi + Mutable =
+  build_tones_loop(slots, shift, 0)
+
+fn build_tones_loop(slots: Array[Int], shift: Int, i: Int) : Unit / Ffi + Mutable {
+  if i == note_count { () }
+  else {
+    let prev = slots[i]
+    if prev >= 0 { raylib.unload_sound(prev) }
+    let freq = base_freq(i) * octave_mul(shift)
+    slots[i] := raylib.gen_tone(freq, 0.45, 0.5)
+    build_tones_loop(slots, shift, i + 1)
+  }
+}
+
+# Poll the home row; strike any pressed note and arm its glow.
+fn read_keys(slots: Array[Int], lit: Array[Int]) : Unit / Ffi + Mutable =
+  read_keys_loop(slots, lit, 0)
+
+fn read_keys_loop(slots: Array[Int], lit: Array[Int], i: Int) : Unit / Ffi + Mutable {
+  if i == note_count { () }
+  else {
+    if raylib.is_key_pressed(key_code(i)) {
+      raylib.play_sound(slots[i])
+      lit[i] := lit_frames
+    }
+    read_keys_loop(slots, lit, i + 1)
+  }
+}
+
+# Decay every note's glow by one frame.
+fn decay_lit(lit: Array[Int]) : Unit / Mutable =
+  decay_lit_loop(lit, 0)
+
+fn decay_lit_loop(lit: Array[Int], i: Int) : Unit / Mutable {
+  if i == note_count { () }
+  else {
+    if lit[i] > 0 { lit[i] := lit[i] - 1 }
+    decay_lit_loop(lit, i + 1)
+  }
+}
+
+# ============================================================
+#  3. ===== VIEW ================================================
+# ============================================================
+
+const win_w : Int = 800
+const win_h : Int = 320
+
+const key_w   : Int = 84
+const key_h   : Int = 180
+const key_gap : Int = 10
+const keys_x0 : Int = 28    # left margin so 8 keys + gaps fit 800
+const keys_y0 : Int = 100
+
+const col_bg     : Color = rgba(0x14141eFF)
+const col_key    : Color = rgba(0x2a2a3cFF)
+const col_lit    : Color = rgba(0x6cfff5FF)
+const col_border : Color = rgba(0x44445cFF)
+const col_text   : Color = rgba(0xfdf9b9FF)
+const col_dim    : Color = rgba(0x808090FF)
+const col_label  : Color = rgba(0x101820FF)   # dark text on a lit key
+
+fn draw_keys(lit: Array[Int]) : Unit / Ffi =
+  draw_keys_loop(lit, 0)
+
+fn draw_keys_loop(lit: Array[Int], i: Int) : Unit / Ffi {
+  if i == note_count { () }
+  else {
+    let x = keys_x0 + i * (key_w + key_gap)
+    let glow = lit[i] > 0
+    let fill = if glow { col_lit } else { col_key }
+    let txt  = if glow { col_label } else { col_text }
+    raylib.draw_rectangle(x, keys_y0, key_w, key_h, col_border)
+    raylib.draw_rectangle(x + 3, keys_y0 + 3, key_w - 6, key_h - 6, fill)
+    raylib.draw_text(key_label(i),  x + 30, keys_y0 + 36, 36, txt)
+    raylib.draw_text(note_label(i), x + 24, keys_y0 + 120, 20, txt)
+    draw_keys_loop(lit, i + 1)
+  }
+}
+
+fn draw_hud(volume: Int, shift: Int) : Unit / Ffi {
+  raylib.draw_text("audio pad / kaikai + raylib", 28, 24, 22, col_text)
+  raylib.draw_text("A S D F G H J K  notas    up/down octava    -/+ volumen    ESC salir",
+                   28, 60, 14, col_dim)
+  raylib.draw_text("vol", 600, 24, 18, col_dim)
+  raylib.draw_text(int_to_string(volume), 650, 24, 18, col_text)
+  raylib.draw_text("oct", 600, 50, 18, col_dim)
+  raylib.draw_text(int_to_string(shift), 650, 50, 18, col_text)
+}
+
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+# ============================================================
+
+const key_up    : Int = 265
+const key_down  : Int = 264
+const key_plus  : Int = 61
+const key_kp_plus  : Int = 334
+const key_minus : Int = 45
+const key_kp_minus : Int = 333
+
+# Volume is held as 0..10 (integer, for the HUD) and pushed to raylib
+# as a 0..1 float on every change.
+fn apply_volume(vol: Int) : Unit / Ffi {
+  let f = int_to_real(vol) / 10.0
+  raylib.set_master_volume(f)
+}
+
+fn frame_loop(slots: Array[Int], lit: Array[Int],
+              volume: Ref[Int], shift: Ref[Int]) : Unit / Ffi + Mutable {
+  until { raylib.window_should_close() } {
+    # ---- input ----
+    read_keys(slots, lit)
+
+    if raylib.is_key_pressed(key_up) and @shift < 1 {
+      shift := @shift + 1
+      build_tones(slots, @shift)
+    }
+    if raylib.is_key_pressed(key_down) and @shift > 0 - 1 {
+      shift := @shift - 1
+      build_tones(slots, @shift)
+    }
+    if raylib.is_key_pressed(key_plus) or raylib.is_key_pressed(key_kp_plus) {
+      if @volume < 10 { volume := @volume + 1; apply_volume(@volume) }
+    }
+    if raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_minus) {
+      if @volume > 0 { volume := @volume - 1; apply_volume(@volume) }
+    }
+
+    decay_lit(lit)
+
+    # ---- render ----
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+    draw_keys(lit)
+    draw_hud(@volume, @shift)
+    raylib.end_drawing()
+  }
+}
+
+fn main() : Unit / Ffi + Mutable {
+  raylib.init_window(win_w, win_h, "Audio pad / kaikai + raylib")
+  raylib.set_target_fps(60)
+  raylib.init_audio_device()
+
+  let slots = array_make(note_count, 0 - 1)   # -1 = no Sound yet
+  let lit   = array_make(note_count, 0)
+  let volume = Mutable.ref_make(7)            # 0.7 master volume
+  let shift  = Mutable.ref_make(0)
+
+  apply_volume(@volume)
+  build_tones(slots, @shift)
+
+  frame_loop(slots, lit, volume, shift)
+
+  raylib.close_audio_device()
+  raylib.close_window()
+}
