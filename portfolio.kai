@@ -517,19 +517,19 @@ fn frame_loop(assets: Array[Asset],
               spark: Array[Real],
               spark_heads: Array[Int],
               tick_count: Ref[Int]) : Unit / Ffi + Mutable = {
-  var paused = false
+  var paused := false
   let values = array_make(n_pos, 0.0)
 
   until { raylib.window_should_close() } {
     # ---- input ----
-    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_space) { paused := not paused }
     if raylib.is_key_pressed(key_r) {
       reset_prices(basis, prices)
       tick_count := 0
     } else { () }
 
     # ---- STATE: tick the simulation ----
-    if not @paused {
+    if not paused {
       let t = @tick_count + 1
       tick_count := t
       if t % tick_period == 0 {
@@ -547,7 +547,7 @@ fn frame_loop(assets: Array[Asset],
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    draw_header(@paused)
+    draw_header(paused)
     draw_rows(assets, qty, basis, prices, 0)
     draw_sparklines(spark, spark_heads)
     draw_footer(total_now, total_basis, fx_eur_usd)

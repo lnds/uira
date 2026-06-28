@@ -78,15 +78,15 @@ fn next_state(alive: Bool, n: Int) : Bool =
 # Compute the next generation into `dst` from `src`. Mutates
 # `dst` (passed in by the caller); reads `src`.
 fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit / Mutable {
-  var r = 0
+  var r := 0
   repeat(rows) {
-    var c = 0
+    var c := 0
     repeat(cols) {
-      let alive = src[idx(@c, @r)]
-      dst[idx(@c, @r)] := next_state(alive, neighbours(src, @c, @r))
-      c := @c + 1
+      let alive = src[idx(c, r)]
+      dst[idx(c, r)] := next_state(alive, neighbours(src, c, r))
+      c := c + 1
     }
-    r := @r + 1
+    r := r + 1
   }
 }
 
@@ -100,10 +100,10 @@ fn step_into(src: Array[Bool], dst: Array[Bool]) : Unit / Mutable {
 # ============================================================
 
 fn clear_grid(g: Array[Bool]) : Unit / Mutable {
-  var i = 0
+  var i := 0
   repeat(grid_len) {
-    g[@i] := false
-    i := @i + 1
+    g[i] := false
+    i := i + 1
   }
 }
 
@@ -187,16 +187,16 @@ const col_alive : Color = rgba(0x6cfff5FF)
 const col_text  : Color = rgba(0xfdf9b9FF)
 
 fn draw_cells(g: Array[Bool]) : Unit / Ffi {
-  var i = 0
+  var i := 0
   repeat(grid_len) {
-    if g[@i] {
-      let c = @i % cols
-      let r = @i / cols
+    if g[i] {
+      let c = i % cols
+      let r = i / cols
       raylib.draw_rectangle(c * cell_size, r * cell_size,
                             cell_size - 1, cell_size - 1,
                             col_alive)
     }
-    i := @i + 1
+    i := i + 1
   }
 }
 
@@ -224,40 +224,40 @@ const key_c     : Int = 67
 const step_every : Int = 6   # 60 fps / 6 = 10 generations/sec
 
 fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi + Mutable {
-  var which = 0
-  var gen = 0
-  var frame = 0
-  var paused = false
+  var which := 0
+  var gen := 0
+  var frame := 0
+  var paused := false
 
   until { raylib.window_should_close() } {
     # ---- input ----
-    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_space) { paused := not paused }
     if raylib.is_key_pressed(key_r) {
-      seed(current(@which, a, b))
+      seed(current(which, a, b))
       gen := 0
     }
     if raylib.is_key_pressed(key_c) {
-      clear_grid(current(@which, a, b))
+      clear_grid(current(which, a, b))
       gen := 0
     }
 
     # ---- MODEL: tick a generation ----
-    if (not @paused) and (@frame % step_every == 0) {
-      let cur = current(@which, a, b)
-      let nxt = other(@which, a, b)
+    if (not paused) and (frame % step_every == 0) {
+      let cur = current(which, a, b)
+      let nxt = other(which, a, b)
       step_into(cur, nxt)
-      which := 1 - @which
-      gen := @gen + 1
+      which := 1 - which
+      gen := gen + 1
     }
 
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    draw_cells(current(@which, a, b))
-    draw_hud(@gen, @paused)
+    draw_cells(current(which, a, b))
+    draw_hud(gen, paused)
     raylib.end_drawing()
 
-    frame := @frame + 1
+    frame := frame + 1
   }
 }
 

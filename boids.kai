@@ -86,11 +86,11 @@ fn scan_neighbours(
   ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
   coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
 ) : Unit / Mutable {
-  var j = 0
+  var j := 0
   repeat(count) {
-    if @j != i {
-      let dx = xi - xs[@j]
-      let dy = yi - ys[@j]
+    if j != i {
+      let dx = xi - xs[j]
+      let dy = yi - ys[j]
       let d2 = dx * dx + dy * dy
 
       if d2 < r_sep_sq and d2 > 0.0001 {
@@ -103,19 +103,19 @@ fn scan_neighbours(
 
       if d2 < r_align_sq {
         # Alignment: sum neighbours' velocities, average later.
-        add(ali_x, vxs[@j])
-        add(ali_y, vys[@j])
+        add(ali_x, vxs[j])
+        add(ali_y, vys[j])
         add(n_ali, 1)
       }
 
       if d2 < r_coh_sq {
         # Cohesion: sum neighbours' positions, average later.
-        add(coh_x, xs[@j])
-        add(coh_y, ys[@j])
+        add(coh_x, xs[j])
+        add(coh_y, ys[j])
         add(n_coh, 1)
       }
     }
-    j := @j + 1
+    j := j + 1
   }
 }
 
@@ -182,13 +182,13 @@ const height : Real = 600.0
 
 fn randomize(xs: Array[Real], ys: Array[Real],
              vxs: Array[Real], vys: Array[Real]) : Unit / Ffi + Mutable {
-  var i = 0
+  var i := 0
   repeat(count) {
-    xs[@i] := int_to_real(raylib.get_random_value(0, 800))
-    ys[@i] := int_to_real(raylib.get_random_value(0, 600))
-    vxs[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    vys[@i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    i := @i + 1
+    xs[i] := int_to_real(raylib.get_random_value(0, 800))
+    ys[i] := int_to_real(raylib.get_random_value(0, 600))
+    vxs[i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    vys[i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    i := i + 1
   }
 }
 
@@ -208,12 +208,12 @@ fn step_velocities(
   let sep_x = rcell(); let sep_y = rcell()
   let ali_x = rcell(); let ali_y = rcell(); let n_ali = icell()
   let coh_x = rcell(); let coh_y = rcell(); let n_coh = icell()
-  var i = 0
+  var i := 0
   repeat(count) {
-    step_one(@i, xs, ys, vxs, vys, next_vxs, next_vys,
+    step_one(i, xs, ys, vxs, vys, next_vxs, next_vys,
              sep_x, sep_y, ali_x, ali_y, n_ali,
              coh_x, coh_y, n_coh)
-    i := @i + 1
+    i := i + 1
   }
 }
 
@@ -224,13 +224,13 @@ fn apply_step(
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
 ) : Unit / Mutable {
-  var i = 0
+  var i := 0
   repeat(count) {
-    vxs[@i] := next_vxs[@i]
-    vys[@i] := next_vys[@i]
-    xs[@i] := wrap_pos(xs[@i] + vxs[@i], width)
-    ys[@i] := wrap_pos(ys[@i] + vys[@i], height)
-    i := @i + 1
+    vxs[i] := next_vxs[i]
+    vys[i] := next_vys[i]
+    xs[i] := wrap_pos(xs[i] + vxs[i], width)
+    ys[i] := wrap_pos(ys[i] + vys[i], height)
+    i := i + 1
   }
 }
 
@@ -281,10 +281,10 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
 
 fn draw_all(xs: Array[Real], ys: Array[Real],
             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi {
-  var i = 0
+  var i := 0
   repeat(count) {
-    draw_one(xs[@i], ys[@i], vxs[@i], vys[@i])
-    i := @i + 1
+    draw_one(xs[i], ys[i], vxs[i], vys[i])
+    i := i + 1
   }
 }
 
@@ -309,15 +309,15 @@ fn frame_loop(
   vxs: Array[Real], vys: Array[Real],
   next_vxs: Array[Real], next_vys: Array[Real]
 ) : Unit / Ffi + Mutable {
-  var paused = false
+  var paused := false
 
   until { raylib.window_should_close() } {
     # ---- input ----
-    if raylib.is_key_pressed(key_space) { paused := not @paused }
+    if raylib.is_key_pressed(key_space) { paused := not paused }
     if raylib.is_key_pressed(key_r)     { randomize(xs, ys, vxs, vys) }
 
     # ---- MODEL + STATE: tick the simulation ----
-    if not @paused {
+    if not paused {
       step_velocities(xs, ys, vxs, vys, next_vxs, next_vys)
       apply_step(xs, ys, vxs, vys, next_vxs, next_vys)
     }
@@ -326,7 +326,7 @@ fn frame_loop(
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
     draw_all(xs, ys, vxs, vys)
-    draw_hud(@paused)
+    draw_hud(paused)
     raylib.end_drawing()
   }
 }

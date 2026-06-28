@@ -46,7 +46,7 @@ const max_iter : Int = 100
 # z_{n+1} = z_n^2 + c, starting at z_0 = 0. Returns the iteration
 # count at which |z|² first exceeded 4, or `max_iter` if it
 # stayed bounded (interior point — colour as black).
-fn iterate(c: Complex) : Int = iter_loop(c, zero(), 0)
+fn iterate(c: Complex) : Int = iter_loop(c, mk(0.0, 0.0), 0)
 
 fn iter_loop(c: Complex, z: Complex, n: Int) : Int {
   if n >= max_iter { max_iter }
@@ -120,14 +120,14 @@ fn compute(buf: Array[Int],
            im_min: Real, im_max: Real) : Unit / Mutable {
   let dre = (re_max - re_min) / int_to_real(cw)
   let dim = (im_max - im_min) / int_to_real(ch)
-  var i = 0
+  var i := 0
   repeat(buf_len) {
-    let cx = @i % cw
-    let cy = @i / cw
+    let cx = i % cw
+    let cy = i / cw
     let c = mk(re_min + int_to_real(cx) * dre,
                im_min + int_to_real(cy) * dim)
-    buf[@i] := iterate(c)
-    i := @i + 1
+    buf[i] := iterate(c)
+    i := i + 1
   }
 }
 
@@ -193,17 +193,17 @@ const col_bg : Color = rgba(0x000010FF)
 const col_text : Color = rgba(0xfdf9b9FF)
 
 fn draw_buffer(buf: Array[Int]) : Unit / Ffi = {
-  var i = 0
+  var i := 0
   repeat(buf_len) {
-    let n = buf[@i]
+    let n = buf[i]
     # Interior (n == max_iter) is skipped: the background was
     # already painted black, so we save a DrawRectangle.
     if n < max_iter {
-      let cx = @i % cw
-      let cy = @i / cw
+      let cx = i % cw
+      let cy = i / cw
       raylib.draw_rectangle(cx * px, cy * px, px, px, color_for(n))
     }
-    i := @i + 1
+    i := i + 1
   }
 }
 

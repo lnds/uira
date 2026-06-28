@@ -388,44 +388,44 @@ fn frame_loop(bodies: Array[Body],
               xs: Array[Real], ys: Array[Real],
               trails: Array[Real], trail_heads: Array[Int],
               banner: Array[String]) : Unit / Ffi + Mutable + Event = {
-  var paused    = false
-  var trails_on = true
-  var day       = 0.0
-  var last_day  = 0.0
-  var speed     = 8.0
-  var prev_time = raylib.get_time()
+  var paused := false
+  var trails_on := true
+  var day := 0.0
+  var last_day := 0.0
+  var speed := 8.0
+  var prev_time := raylib.get_time()
 
   until { raylib.window_should_close() } {
     # ---- input ----
     let now = raylib.get_time()
-    let dt = now - @prev_time
+    let dt = now - prev_time
     prev_time := now
 
-    if raylib.is_key_pressed(key_space) { paused := not @paused }
-    if raylib.is_key_pressed(key_t)     { trails_on := not @trails_on }
+    if raylib.is_key_pressed(key_space) { paused := not paused }
+    if raylib.is_key_pressed(key_t)     { trails_on := not trails_on }
     if raylib.is_key_pressed(key_r)     {
       day := 0.0
       last_day := 0.0
     }
-    if raylib.is_key_pressed(key_plus)  { speed := @speed * 1.5 }
-    if raylib.is_key_pressed(key_minus) { speed := @speed / 1.5 }
+    if raylib.is_key_pressed(key_plus)  { speed := speed * 1.5 }
+    if raylib.is_key_pressed(key_minus) { speed := speed / 1.5 }
 
     # ---- STATE: tick the orbit clock ----
-    if not @paused {
-      last_day := @day
-      day := @day + dt * @speed
-      project_all(bodies, @day * 1.0<days>, xs, ys)
-      detect_events(bodies, @last_day, @day)
-      if @trails_on { record_all(trails, trail_heads, xs, ys) }
+    if not paused {
+      last_day := day
+      day := day + dt * speed
+      project_all(bodies, day * 1.0<days>, xs, ys)
+      detect_events(bodies, last_day, day)
+      if trails_on { record_all(trails, trail_heads, xs, ys) }
     }
 
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
     draw_orbits(bodies, 0)
-    if @trails_on { draw_trails(trails) }
+    if trails_on { draw_trails(trails) }
     draw_bodies(bodies, xs, ys, 0)
-    draw_hud(@day, @speed, @paused, @trails_on)
+    draw_hud(day, speed, paused, trails_on)
     draw_sidebar(bodies, 0, 0)
     draw_banner(banner, 0)
     raylib.end_drawing()

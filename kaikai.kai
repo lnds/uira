@@ -57,12 +57,12 @@ fn set_vertex(f: Array[Real], i: Int, x: Real, y: Real) : Unit / Mutable {
 # Kona: el cordel relajado, círculo regular.
 fn fig_kona() : Array[Real] / Ffi + Mutable {
   let f = array_make(verts * 2, 0.0)
-  var i = 0
+  var i := 0
   repeat(verts) {
-    let theta = 6.2831853 * int_to_real(@i) / int_to_real(verts)
-    f[@i * 2]     := raylib.cos(theta)
-    f[@i * 2 + 1] := raylib.sin(theta)
-    i := @i + 1
+    let theta = 6.2831853 * int_to_real(i) / int_to_real(verts)
+    f[i * 2]     := raylib.cos(theta)
+    f[i * 2 + 1] := raylib.sin(theta)
+    i := i + 1
   }
   f
 }
@@ -124,13 +124,13 @@ fn fig_moai() : Array[Real] / Mutable {
 # Rapa: figura estrellada de 6 puntas (alternando radios).
 fn fig_rapa() : Array[Real] / Ffi + Mutable {
   let f = array_make(verts * 2, 0.0)
-  var i = 0
+  var i := 0
   repeat(verts) {
-    let theta = 6.2831853 * int_to_real(@i) / int_to_real(verts)
-    let r = if @i % 2 == 0 { 1.05 } else { 0.45 }
-    f[@i * 2]     := r * raylib.cos(theta)
-    f[@i * 2 + 1] := r * raylib.sin(theta)
-    i := @i + 1
+    let theta = 6.2831853 * int_to_real(i) / int_to_real(verts)
+    let r = if i % 2 == 0 { 1.05 } else { 0.45 }
+    f[i * 2]     := r * raylib.cos(theta)
+    f[i * 2 + 1] := r * raylib.sin(theta)
+    i := i + 1
   }
   f
 }
@@ -162,10 +162,10 @@ fn real_floor(x: Real) : Real {
 # Mezcla figuras a y b en `out` según factor t en [0,1].
 fn blend(a: Array[Real], b: Array[Real], t: Real,
          out: Array[Real]) : Unit / Mutable {
-  var i = 0
+  var i := 0
   repeat(verts * 2) {
-    out[@i] := a[@i] + t * (b[@i] - a[@i])
-    i := @i + 1
+    out[i] := a[i] + t * (b[i] - a[i])
+    i := i + 1
   }
 }
 
@@ -252,23 +252,23 @@ fn draw_figure(pts: Array[Real], spin: Real) : Unit / Ffi + Mutable {
   let bx = array_make(1, 0.0); let by = array_make(1, 0.0)
 
   # Edges of the closed polygon.
-  var i = 0
+  var i := 0
   repeat(verts) {
-    let j = (@i + 1) % verts
-    world_xy(pts[@i * 2], pts[@i * 2 + 1], ct, st, ax, ay)
+    let j = (i + 1) % verts
+    world_xy(pts[i * 2], pts[i * 2 + 1], ct, st, ax, ay)
     world_xy(pts[j  * 2], pts[j  * 2 + 1], ct, st, bx, by)
     raylib.draw_line(real_to_int(ax[0]), real_to_int(ay[0]),
                      real_to_int(bx[0]), real_to_int(by[0]), col_cord)
-    i := @i + 1
+    i := i + 1
   }
 
   # "Finger" circles on each vertex.
   i := 0
   repeat(verts) {
-    world_xy(pts[@i * 2], pts[@i * 2 + 1], ct, st, ax, ay)
+    world_xy(pts[i * 2], pts[i * 2 + 1], ct, st, ax, ay)
     raylib.draw_circle(real_to_int(ax[0]), real_to_int(ay[0]),
                        4.0, col_finger)
-    i := @i + 1
+    i := i + 1
   }
 }
 
@@ -312,20 +312,20 @@ fn frame_loop(figs: Array[Array[Real]],
               t_cell: Ref[Real],
               a_cell: Ref[Int],
               b_cell: Ref[Int]) : Unit / Ffi + Mutable {
-  var paused = false
-  var prev_time = raylib.get_time()
-  var spin = 0.0
+  var paused := false
+  var prev_time := raylib.get_time()
+  var spin := 0.0
 
   let cycle = morph_secs + hold_secs
 
   until { raylib.window_should_close() } {
     # ---- input ----
     let now = raylib.get_time()
-    let dt = now - @prev_time
+    let dt = now - prev_time
     prev_time := now
 
     if raylib.is_key_pressed(key_space) {
-      paused := not @paused
+      paused := not paused
     }
     if raylib.is_key_pressed(key_r) {
       phase_cell := 0.0
@@ -341,9 +341,9 @@ fn frame_loop(figs: Array[Array[Real]],
     }
 
     # ---- STATE: tick the phase clock ----
-    if not @paused {
+    if not paused {
       phase_cell := @phase_cell + dt / cycle
-      spin := @spin + dt * spin_rate
+      spin := spin + dt * spin_rate
     }
 
     # ---- MODEL: blend the current pair of figures ----
@@ -352,8 +352,8 @@ fn frame_loop(figs: Array[Array[Real]],
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    draw_figure(pts, @spin)
-    draw_hud(@a_cell, @b_cell, @t_cell, @paused)
+    draw_figure(pts, spin)
+    draw_hud(@a_cell, @b_cell, @t_cell, paused)
     raylib.end_drawing()
   }
 }

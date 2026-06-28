@@ -48,7 +48,7 @@ uira/
 - `cc` (clang or gcc) with C99.
 - `pkg-config`.
 - raylib 5.x. On macOS: `brew install raylib`.
-- kaikai 0.91+. On macOS:
+- kaikai 0.93+. On macOS:
   `brew install lnds/kaikai/kaikai`. The Makefile picks up
   whatever `kai` is on `$PATH`; override to point at a sibling
   checkout with `make KAI_BIN=../kaikai/bin/kai`. The build
