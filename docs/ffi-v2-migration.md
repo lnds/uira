@@ -82,9 +82,10 @@ aritmética kaikai). Patrones de migración aplicados:
 
 ## Notas del toolchain
 
-- **`--backend=c` es obligatorio** (en el Makefile): struct-by-value no
-  compila aún en el backend native, que lo reporta limpio y sugiere el
-  flag.
+- En 0.91.2 **`--backend=c` era obligatorio**: struct-by-value no
+  compilaba en el backend native. kaikai 0.98 clasifica los agregados
+  by-value (`Color`/`Vector2`/`Rect`) en la convención de llamada de la
+  plataforma, así que el Makefile ya usa el backend native por defecto.
 - Los bugs #922 (const-en-closure), #923 (segfault native) y #924
   (struct-FFI no expuesta al shim) están **cerrados** en 0.91.2. El
   workaround de #922 resultó innecesario: los `const` capturados en

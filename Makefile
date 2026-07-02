@@ -1,16 +1,14 @@
-# kaikai + raylib demos. The kai compiler emits C and links via
-# cc; we feed the raylib pkg-config flags and the font shim through
-# CFLAGS.
+# kaikai + raylib demos. kai's native backend classifies the
+# by-value FFI structs (Color/Vector2/Rect) into the platform
+# calling convention; we feed the raylib pkg-config flags and the
+# C shims through CFLAGS. A cc-only checkout falls back to the
+# C-text backend on its own.
 #
-# Defaults to the `kai` on $PATH (e.g. `brew install
-# lnds/kaikai/kaikai`). Override to point at a sibling kaikai
-# checkout: `make KAI_BIN=../kaikai/bin/kai`.
-#
-# `--backend=c` is required: Color/Vector2 cross the FFI by value
-# (struct-by-value), which the native backend does not support yet.
+# Defaults to the `kai` on $PATH (kaikai 0.98+). Override to point
+# at a sibling kaikai checkout: `make KAI_BIN=../kaikai/bin/kai`.
 
 KAI_BIN ?= kai
-KAI_BACKEND := --backend=c
+KAI_BACKEND :=
 
 RAYLIB_CFLAGS := $(shell pkg-config --cflags raylib)
 RAYLIB_LIBS   := $(shell pkg-config --libs raylib)

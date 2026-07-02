@@ -48,12 +48,12 @@ uira/
 - `cc` (clang or gcc) with C99.
 - `pkg-config`.
 - raylib 5.x. On macOS: `brew install raylib`.
-- kaikai 0.93+. On macOS:
-  `brew install lnds/kaikai/kaikai`. The Makefile picks up
-  whatever `kai` is on `$PATH`; override to point at a sibling
-  checkout with `make KAI_BIN=../kaikai/bin/kai`. The build
-  forces `--backend=c`: struct-by-value FFI isn't on the native
-  backend yet.
+- kaikai 0.98+ (see <https://kaikai-lang.org/> for install).
+  The Makefile picks up whatever `kai` is on `$PATH`; override to
+  point at a sibling checkout with `make KAI_BIN=../kaikai/bin/kai`.
+  The build uses kaikai's default native backend, which marshals
+  the by-value FFI structs (`Color`, `Vector2`, `Rect`) into the
+  platform calling convention.
 
 ## Build & run
 
@@ -94,8 +94,8 @@ fn loop() : Unit / Ffi {
 
 Build it the same way as the demos — see the `Makefile` for the
 exact incantation. The short version: pipe the font shim and
-`pkg-config --cflags --libs raylib` through `CFLAGS`, build with
-`--backend=c`, and let `kai build` do the rest. The demos
+`pkg-config --cflags --libs raylib` through `CFLAGS`, and let
+`kai build` do the rest. The demos
 `import loop` for `repeat` / `until` / `while` / `forever`.
 
 ## Binding reference
@@ -259,12 +259,12 @@ prototype.
 The build pipeline:
 
 ```
-*.kai  --kaic2 (--backend=c)-->  out.c  --cc-->  binary
-                                            ^
-                                            |
-                       ffi/raylib_fonts.c (linked via CFLAGS)
-                       ffi/raylib_audio.c (linked via CFLAGS)
-                       libraylib          (linked via CFLAGS)
+*.kai  --kaic2 (native backend)-->  binary
+                                       ^
+                                       |
+                  ffi/raylib_fonts.c (linked via CFLAGS)
+                  ffi/raylib_audio.c (linked via CFLAGS)
+                  libraylib          (linked via CFLAGS)
 ```
 
 Each binding ([`ffi/raylib.kai`](ffi/raylib.kai)) is an
@@ -354,13 +354,9 @@ for the new octave. Doubles as the smoke test for the audio shim.
 
 ## Limitations / known gotchas
 
-- **`--backend=c` is required.** Struct-by-value FFI doesn't run
-  on the native (libLLVM) backend yet; it reports the gap and
-  points at the flag. The Makefile passes `--backend=c` for all
-  targets.
-- **`raylib.h` must stay out of `out.c`.** kaikai emits its own
-  `Color`/`Vector2` typedefs; pulling in `raylib.h` (e.g. via
-  `-include`) collides with them. The font shim includes
+- **`raylib.h` must stay out of the emitted code.** kaikai emits
+  its own `Color`/`Vector2` typedefs; pulling in `raylib.h` (e.g.
+  via `-include`) collides with them. The font shim includes
   `raylib.h` in its own translation unit instead.
 - **`Font`, `Sound` and `Music` aren't by-value.** Their pointers
   (and `Font`'s nested texture, `Sound`/`Music`'s embedded
