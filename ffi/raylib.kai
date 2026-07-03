@@ -112,10 +112,162 @@ pub fn draw_line(x1: I32, y1: I32, x2: I32, y2: I32, color: Color) : Unit / Ffi
 extern "C"("DrawCircle")
 pub fn draw_circle(x: I32, y: I32, r: F32, color: Color) : Unit / Ffi
 
-# ----- input -----
+# ----- shapes: rectangles (Vector2 / Rect by value) -----
+
+extern "C"("DrawRectangleV")
+pub fn draw_rectangle_v(position: Vector2, size: Vector2, color: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleRec")
+pub fn draw_rectangle_rec(rec: Rect, color: Color) : Unit / Ffi
+
+# Rotated rectangle: `origin` is the pivot (relative to rec's top-left).
+extern "C"("DrawRectanglePro")
+pub fn draw_rectangle_pro(rec: Rect, origin: Vector2, rotation: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleLines")
+pub fn draw_rectangle_lines(x: I32, y: I32, w: I32, h: I32, color: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleLinesEx")
+pub fn draw_rectangle_lines_ex(rec: Rect, line_thick: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleRounded")
+pub fn draw_rectangle_rounded(rec: Rect, roundness: F32, segments: I32, color: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleGradientV")
+pub fn draw_rectangle_gradient_v(x: I32, y: I32, w: I32, h: I32, top: Color, bottom: Color) : Unit / Ffi
+
+extern "C"("DrawRectangleGradientH")
+pub fn draw_rectangle_gradient_h(x: I32, y: I32, w: I32, h: I32, left: Color, right: Color) : Unit / Ffi
+
+# ----- shapes: circles / ellipses -----
+
+extern "C"("DrawCircleV")
+pub fn draw_circle_v(center: Vector2, radius: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawCircleLines")
+pub fn draw_circle_lines(x: I32, y: I32, radius: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawCircleGradient")
+pub fn draw_circle_gradient(x: I32, y: I32, radius: F32, inner: Color, outer: Color) : Unit / Ffi
+
+extern "C"("DrawCircleSector")
+pub fn draw_circle_sector(center: Vector2, radius: F32, start_angle: F32, end_angle: F32, segments: I32, color: Color) : Unit / Ffi
+
+extern "C"("DrawEllipse")
+pub fn draw_ellipse(x: I32, y: I32, radius_h: F32, radius_v: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawRing")
+pub fn draw_ring(center: Vector2, inner_radius: F32, outer_radius: F32, start_angle: F32, end_angle: F32, segments: I32, color: Color) : Unit / Ffi
+
+# ----- shapes: lines / pixels / polygons -----
+
+extern "C"("DrawPixelV")
+pub fn draw_pixel_v(position: Vector2, color: Color) : Unit / Ffi
+
+extern "C"("DrawLineV")
+pub fn draw_line_v(start: Vector2, end: Vector2, color: Color) : Unit / Ffi
+
+# Thick line (round-capped). `draw_line` is the 1px integer variant.
+extern "C"("DrawLineEx")
+pub fn draw_line_ex(start: Vector2, end: Vector2, thick: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawTriangleLines")
+pub fn draw_triangle_lines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) : Unit / Ffi
+
+# Regular `sides`-gon centred at `center`, `radius` to each vertex.
+extern "C"("DrawPoly")
+pub fn draw_poly(center: Vector2, sides: I32, radius: F32, rotation: F32, color: Color) : Unit / Ffi
+
+extern "C"("DrawPolyLines")
+pub fn draw_poly_lines(center: Vector2, sides: I32, radius: F32, rotation: F32, color: Color) : Unit / Ffi
+
+# ----- collisions (all by value) -----
+
+extern "C"("CheckCollisionRecs")
+pub fn check_collision_recs(rec1: Rect, rec2: Rect) : Bool / Ffi
+
+extern "C"("CheckCollisionCircles")
+pub fn check_collision_circles(center1: Vector2, radius1: F32, center2: Vector2, radius2: F32) : Bool / Ffi
+
+extern "C"("CheckCollisionCircleRec")
+pub fn check_collision_circle_rec(center: Vector2, radius: F32, rec: Rect) : Bool / Ffi
+
+extern "C"("CheckCollisionPointRec")
+pub fn check_collision_point_rec(point: Vector2, rec: Rect) : Bool / Ffi
+
+extern "C"("CheckCollisionPointCircle")
+pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: F32) : Bool / Ffi
+
+# ----- input: keyboard -----
+#
+# `is_key_pressed` fires once on the press edge; `is_key_down` is true
+# every frame the key is held (use it for continuous movement). Key
+# codes live in `ffi/keys.kai` (`import ffi.keys`).
 
 extern "C"("IsKeyPressed")
 pub fn is_key_pressed(key: I32) : Bool / Ffi
+
+extern "C"("IsKeyDown")
+pub fn is_key_down(key: I32) : Bool / Ffi
+
+extern "C"("IsKeyReleased")
+pub fn is_key_released(key: I32) : Bool / Ffi
+
+extern "C"("IsKeyUp")
+pub fn is_key_up(key: I32) : Bool / Ffi
+
+# Pop the next queued keycode / unicode char (0 when the queue drains).
+extern "C"("GetKeyPressed")
+pub fn get_key_pressed() : I32 / Ffi
+
+extern "C"("GetCharPressed")
+pub fn get_char_pressed() : I32 / Ffi
+
+# ----- input: mouse -----
+
+extern "C"("IsMouseButtonPressed")
+pub fn is_mouse_button_pressed(button: I32) : Bool / Ffi
+
+extern "C"("IsMouseButtonDown")
+pub fn is_mouse_button_down(button: I32) : Bool / Ffi
+
+extern "C"("IsMouseButtonReleased")
+pub fn is_mouse_button_released(button: I32) : Bool / Ffi
+
+extern "C"("GetMouseX")
+pub fn get_mouse_x() : I32 / Ffi
+
+extern "C"("GetMouseY")
+pub fn get_mouse_y() : I32 / Ffi
+
+extern "C"("GetMousePosition")
+pub fn get_mouse_position() : Vector2 / Ffi
+
+extern "C"("GetMouseDelta")
+pub fn get_mouse_delta() : Vector2 / Ffi
+
+extern "C"("SetMousePosition")
+pub fn set_mouse_position(x: I32, y: I32) : Unit / Ffi
+
+extern "C"("GetMouseWheelMove")
+pub fn get_mouse_wheel_move() : F32 / Ffi
+
+extern "C"("SetMouseCursor")
+pub fn set_mouse_cursor(cursor: I32) : Unit / Ffi
+
+# ----- input: gamepad -----
+
+extern "C"("IsGamepadAvailable")
+pub fn is_gamepad_available(gamepad: I32) : Bool / Ffi
+
+extern "C"("IsGamepadButtonPressed")
+pub fn is_gamepad_button_pressed(gamepad: I32, button: I32) : Bool / Ffi
+
+extern "C"("IsGamepadButtonDown")
+pub fn is_gamepad_button_down(gamepad: I32, button: I32) : Bool / Ffi
+
+extern "C"("GetGamepadAxisMovement")
+pub fn get_gamepad_axis_movement(gamepad: I32, axis: I32) : F32 / Ffi
 
 # ----- random -----
 

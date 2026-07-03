@@ -1,0 +1,146 @@
+# raylib input constants — keycodes, mouse buttons/cursors, gamepad.
+#
+# Values are raylib's own enums (KeyboardKey, MouseButton, …), copied
+# as plain Ints so call sites read `keys.key_left` instead of `263`.
+# Pass them to raylib.is_key_down / is_mouse_button_pressed / etc.
+
+# ----- keyboard (KeyboardKey) -----
+
+# Navigation / editing.
+pub const key_space     : Int = 32
+pub const key_escape    : Int = 256
+pub const key_enter     : Int = 257
+pub const key_tab       : Int = 258
+pub const key_backspace : Int = 259
+pub const key_insert    : Int = 260
+pub const key_delete    : Int = 261
+pub const key_right     : Int = 262
+pub const key_left      : Int = 263
+pub const key_down      : Int = 264
+pub const key_up        : Int = 265
+pub const key_page_up   : Int = 266
+pub const key_page_down : Int = 267
+pub const key_home      : Int = 268
+pub const key_end       : Int = 269
+
+# Modifiers.
+pub const key_left_shift    : Int = 340
+pub const key_left_control  : Int = 341
+pub const key_left_alt      : Int = 342
+pub const key_left_super    : Int = 343
+pub const key_right_shift   : Int = 344
+pub const key_right_control : Int = 345
+pub const key_right_alt     : Int = 346
+
+# Symbols / digits.
+pub const key_apostrophe : Int = 39
+pub const key_comma      : Int = 44
+pub const key_minus      : Int = 45
+pub const key_period     : Int = 46
+pub const key_slash      : Int = 47
+pub const key_zero       : Int = 48
+pub const key_one        : Int = 49
+pub const key_two        : Int = 50
+pub const key_three      : Int = 51
+pub const key_four       : Int = 52
+pub const key_five       : Int = 53
+pub const key_six        : Int = 54
+pub const key_seven      : Int = 55
+pub const key_eight      : Int = 56
+pub const key_nine       : Int = 57
+pub const key_semicolon  : Int = 59
+pub const key_equal      : Int = 61
+
+# Letters (A..Z = 65..90).
+pub const key_a : Int = 65
+pub const key_b : Int = 66
+pub const key_c : Int = 67
+pub const key_d : Int = 68
+pub const key_e : Int = 69
+pub const key_f : Int = 70
+pub const key_g : Int = 71
+pub const key_h : Int = 72
+pub const key_i : Int = 73
+pub const key_j : Int = 74
+pub const key_k : Int = 75
+pub const key_l : Int = 76
+pub const key_m : Int = 77
+pub const key_n : Int = 78
+pub const key_o : Int = 79
+pub const key_p : Int = 80
+pub const key_q : Int = 81
+pub const key_r : Int = 82
+pub const key_s : Int = 83
+pub const key_t : Int = 84
+pub const key_u : Int = 85
+pub const key_v : Int = 86
+pub const key_w : Int = 87
+pub const key_x : Int = 88
+pub const key_y : Int = 89
+pub const key_z : Int = 90
+
+# Function keys (F1..F12 = 290..301).
+pub const key_f1  : Int = 290
+pub const key_f2  : Int = 291
+pub const key_f3  : Int = 292
+pub const key_f4  : Int = 293
+pub const key_f5  : Int = 294
+pub const key_f6  : Int = 295
+pub const key_f7  : Int = 296
+pub const key_f8  : Int = 297
+pub const key_f9  : Int = 298
+pub const key_f10 : Int = 299
+pub const key_f11 : Int = 300
+pub const key_f12 : Int = 301
+
+# Keypad.
+pub const key_kp_0        : Int = 320
+pub const key_kp_1        : Int = 321
+pub const key_kp_2        : Int = 322
+pub const key_kp_3        : Int = 323
+pub const key_kp_4        : Int = 324
+pub const key_kp_5        : Int = 325
+pub const key_kp_6        : Int = 326
+pub const key_kp_7        : Int = 327
+pub const key_kp_8        : Int = 328
+pub const key_kp_9        : Int = 329
+pub const key_kp_subtract : Int = 333
+pub const key_kp_add      : Int = 334
+pub const key_kp_enter    : Int = 335
+
+# ----- mouse (MouseButton) -----
+
+pub const mouse_button_left    : Int = 0
+pub const mouse_button_right   : Int = 1
+pub const mouse_button_middle  : Int = 2
+pub const mouse_button_side    : Int = 3
+pub const mouse_button_extra   : Int = 4
+pub const mouse_button_forward : Int = 5
+pub const mouse_button_back    : Int = 6
+
+# ----- mouse cursor (MouseCursor) — arg to set_mouse_cursor -----
+
+pub const mouse_cursor_default       : Int = 0
+pub const mouse_cursor_arrow         : Int = 1
+pub const mouse_cursor_ibeam         : Int = 2
+pub const mouse_cursor_crosshair     : Int = 3
+pub const mouse_cursor_pointing_hand : Int = 4
+pub const mouse_cursor_resize_ew     : Int = 5
+pub const mouse_cursor_resize_ns     : Int = 6
+pub const mouse_cursor_not_allowed   : Int = 10
+
+# ----- gamepad -----
+
+pub const gamepad_button_left_face_up    : Int = 1
+pub const gamepad_button_left_face_right : Int = 2
+pub const gamepad_button_left_face_down  : Int = 3
+pub const gamepad_button_left_face_left  : Int = 4
+pub const gamepad_button_right_face_up    : Int = 5
+pub const gamepad_button_right_face_right : Int = 6
+pub const gamepad_button_right_face_down  : Int = 7
+pub const gamepad_button_right_face_left  : Int = 8
+
+pub const gamepad_axis_left_x  : Int = 0
+pub const gamepad_axis_left_y  : Int = 1
+pub const gamepad_axis_right_x : Int = 2
+pub const gamepad_axis_right_y : Int = 3
