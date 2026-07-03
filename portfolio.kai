@@ -49,6 +49,7 @@
 #   ESC     salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -502,8 +503,6 @@ fn draw_footer(total_now: Real<USD>, total_basis: Real<USD>,
 #  + tick on the STATE side, draw_* on the VIEW side.
 # ============================================================
 
-const key_space : Int = 32
-const key_r     : Int = 82
 
 # `tick_count` paces the random walk: we step prices once every
 # `tick_period` frames so the dashboard reads as a slow ticker

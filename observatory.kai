@@ -53,6 +53,7 @@
 #   ESC  salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -878,13 +879,6 @@ fn draw_footer(font: Font, active: Mode) : Unit / Ffi = {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-const key_n     : Int = 78
-const key_h     : Int = 72
-const key_p     : Int = 80
-const key_space : Int = 32
-const key_plus  : Int = 61
-const key_minus : Int = 45
-const key_r     : Int = 82
 
 fn frame_loop(font: Font,
               xs: Array[Real], ys: Array[Real],
@@ -906,7 +900,7 @@ fn frame_loop(font: Font,
     if raylib.is_key_pressed(key_space) {
       paused := if @paused == 0 { 1 } else { 0 }
     }
-    if raylib.is_key_pressed(key_plus)  { dt_ref := @dt_ref * 1.5 }
+    if raylib.is_key_pressed(key_equal)  { dt_ref := @dt_ref * 1.5 }
     if raylib.is_key_pressed(key_minus) { dt_ref := @dt_ref / 1.5 }
     if raylib.is_key_pressed(key_r) {
       reset_for_mode(mode_of(@mode_ref),

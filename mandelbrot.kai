@@ -31,6 +31,7 @@
 #   ESC      salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -222,15 +223,6 @@ fn draw_hud(recomputing: Bool) : Unit / Ffi {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-const key_left  : Int = 263
-const key_right : Int = 262
-const key_up    : Int = 265
-const key_down  : Int = 264
-const key_plus  : Int = 61
-const key_kp_plus  : Int = 334
-const key_minus : Int = 45
-const key_kp_minus : Int = 333
-const key_r     : Int = 82
 
 fn handle_input(re_min: Ref[Real], re_max: Ref[Real],
                 im_min: Ref[Real], im_max: Ref[Real],
@@ -240,10 +232,10 @@ fn handle_input(re_min: Ref[Real], re_max: Ref[Real],
   if raylib.is_key_pressed(key_up)    { pan_im(im_min, im_max, dirty, 0.0 - 1.0) }
   if raylib.is_key_pressed(key_down)  { pan_im(im_min, im_max, dirty,  1.0) }
 
-  if raylib.is_key_pressed(key_plus) or raylib.is_key_pressed(key_kp_plus) {
+  if raylib.is_key_pressed(key_equal) or raylib.is_key_pressed(key_kp_add) {
     zoom_view(re_min, re_max, im_min, im_max, dirty, zoom_step)
   }
-  if raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_minus) {
+  if raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_subtract) {
     zoom_view(re_min, re_max, im_min, im_max, dirty, 1.0 / zoom_step)
   }
   if raylib.is_key_pressed(key_r) {

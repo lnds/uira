@@ -21,6 +21,7 @@
 #   ESC     salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -216,10 +217,6 @@ fn draw_hud(gen: Int, paused: Bool) : Unit / Ffi {
 #  `step_every` frames we run one generation step and bump
 #  `gen`.
 # ============================================================
-
-const key_space : Int = 32
-const key_r     : Int = 82
-const key_c     : Int = 67
 
 const step_every : Int = 6   # 60 fps / 6 = 10 generations/sec
 

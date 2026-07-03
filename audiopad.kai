@@ -19,6 +19,7 @@
 #   ESC               salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -155,9 +156,9 @@ fn decay_lit_loop(lit: Array[Int], i: Int) : Unit / Mutable {
 const win_w : Int = 800
 const win_h : Int = 320
 
-const key_w   : Int = 84
-const key_h   : Int = 180
-const key_gap : Int = 10
+const pad_key_w   : Int = 84
+const pad_key_h   : Int = 180
+const pad_key_gap : Int = 10
 const keys_x0 : Int = 28    # left margin so 8 keys + gaps fit 800
 const keys_y0 : Int = 100
 
@@ -175,12 +176,12 @@ fn draw_keys(lit: Array[Int]) : Unit / Ffi =
 fn draw_keys_loop(lit: Array[Int], i: Int) : Unit / Ffi {
   if i == note_count { () }
   else {
-    let x = keys_x0 + i * (key_w + key_gap)
+    let x = keys_x0 + i * (pad_key_w + pad_key_gap)
     let glow = lit[i] > 0
     let fill = if glow { col_lit } else { col_key }
     let txt  = if glow { col_label } else { col_text }
-    raylib.draw_rectangle(x, keys_y0, key_w, key_h, col_border)
-    raylib.draw_rectangle(x + 3, keys_y0 + 3, key_w - 6, key_h - 6, fill)
+    raylib.draw_rectangle(x, keys_y0, pad_key_w, pad_key_h, col_border)
+    raylib.draw_rectangle(x + 3, keys_y0 + 3, pad_key_w - 6, pad_key_h - 6, fill)
     raylib.draw_text(key_label(i),  x + 30, keys_y0 + 36, 36, txt)
     raylib.draw_text(note_label(i), x + 24, keys_y0 + 120, 20, txt)
     draw_keys_loop(lit, i + 1)
@@ -201,12 +202,6 @@ fn draw_hud(volume: Int, shift: Int) : Unit / Ffi {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-const key_up    : Int = 265
-const key_down  : Int = 264
-const key_plus  : Int = 61
-const key_kp_plus  : Int = 334
-const key_minus : Int = 45
-const key_kp_minus : Int = 333
 
 # Volume is held as 0..10 (integer, for the HUD) and pushed to raylib
 # as a 0..1 float on every change.
@@ -229,10 +224,10 @@ fn frame_loop(slots: Array[Sound], lit: Array[Int],
       shift := @shift - 1
       build_tones(slots, @shift)
     }
-    if raylib.is_key_pressed(key_plus) or raylib.is_key_pressed(key_kp_plus) {
+    if raylib.is_key_pressed(key_equal) or raylib.is_key_pressed(key_kp_add) {
       if @volume < 10 { volume := @volume + 1; apply_volume(@volume) }
     }
-    if raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_minus) {
+    if raylib.is_key_pressed(key_minus) or raylib.is_key_pressed(key_kp_subtract) {
       if @volume > 0 { volume := @volume - 1; apply_volume(@volume) }
     }
 

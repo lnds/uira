@@ -48,6 +48,7 @@
 #   ESC     salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -378,11 +379,6 @@ effect Event {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-const key_space : Int = 32
-const key_plus  : Int = 61
-const key_minus : Int = 45
-const key_r     : Int = 82
-const key_t     : Int = 84
 
 fn frame_loop(bodies: Array[Body],
               xs: Array[Real], ys: Array[Real],
@@ -407,7 +403,7 @@ fn frame_loop(bodies: Array[Body],
       day := 0.0
       last_day := 0.0
     }
-    if raylib.is_key_pressed(key_plus)  { speed := speed * 1.5 }
+    if raylib.is_key_pressed(key_equal)  { speed := speed * 1.5 }
     if raylib.is_key_pressed(key_minus) { speed := speed / 1.5 }
 
     # ---- STATE: tick the orbit clock ----

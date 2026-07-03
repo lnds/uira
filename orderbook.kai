@@ -52,6 +52,7 @@
 #   ESC     salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 import actor
 import spawn
@@ -583,10 +584,6 @@ fn matching_engine(seq: Ref[Int],
 #  during the yields between paints.
 # ============================================================
 
-const key_space : Int = 32
-const key_r     : Int = 82
-const key_f     : Int = 70
-const key_s     : Int = 83
 
 const min_period     : Int = 2
 const max_period     : Int = 60

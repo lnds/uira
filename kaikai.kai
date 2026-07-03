@@ -31,6 +31,7 @@
 #   ESC    salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -301,10 +302,6 @@ fn draw_hud(a_idx: Int, b_idx: Int, t: Real, paused: Bool) : Unit / Ffi {
 #  morph boundary.
 # ============================================================
 
-const key_space : Int = 32
-const key_r     : Int = 82
-const key_left  : Int = 263
-const key_right : Int = 262
 
 fn frame_loop(figs: Array[Array[Real]],
               pts: Array[Real],

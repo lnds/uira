@@ -23,6 +23,7 @@
 #   ESC      salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -288,12 +289,6 @@ fn draw_hud(score: Int, game_over: Bool) : Unit / Ffi {
 # Step rate: one game step every `step_every` frames.
 const step_every : Int = 6   # 60 fps / 6 = 10 steps/sec
 
-# Keys.
-const key_left  : Int = 263
-const key_right : Int = 262
-const key_up    : Int = 265
-const key_down  : Int = 264
-const key_r     : Int = 82
 
 fn frame_loop(body_x: Array[Int], body_y: Array[Int],
               head_idx: Ref[Int], tail_idx: Ref[Int],

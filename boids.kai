@@ -24,6 +24,7 @@
 #   ESC     salir
 
 import ffi.raylib
+import ffi.keys
 import loop
 
 # ============================================================
@@ -301,8 +302,6 @@ fn draw_hud(paused: Bool) : Unit / Ffi {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-const key_space : Int = 32
-const key_r     : Int = 82
 
 fn frame_loop(
   xs: Array[Real], ys: Array[Real],
