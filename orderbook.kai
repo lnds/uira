@@ -637,7 +637,7 @@ fn frame_loop(paused: Ref[Int],
   }
 }
 
-fn run() : Unit / Ffi + Actor[Order] + Spawn + Mutable = {
+fn run() : Unit / Ffi + Spawn + Mutable = {
   # Shared book state.
   let bid_prices = array_make(n_levels, 0)
   let bid_qtys   = array_make(n_levels, 0)
@@ -664,17 +664,18 @@ fn run() : Unit / Ffi + Actor[Order] + Spawn + Mutable = {
   let paused = Mutable.ref_make(0)
   let pace_period = Mutable.ref_make(default_period)
 
-  # The engine receives at OUR mailbox; producers send to it.
-  let engine = Actor.self()
-
-  # Spawn the matching engine first so it can drain ASAP. The
-  # thunk closes over the shared state and calls the engine
-  # body once per tick. Wrapping it in a single-line lambda
-  # keeps the parser happy.
+  # The matching engine runs as its own actor: spawn_actor installs
+  # the Actor[Order] handler on the engine's own fiber and hands back
+  # its Pid. (A handler is lexical to the fiber that installs it, so a
+  # mailbox opened here in run() would NOT reach a fiber spawned from
+  # it — hence spawn_actor rather than a bare spawn under one mailbox.)
   let engine_thunk = () => matching_engine(seq, total_orders, total_fills, total_volume, bid_prices, bid_qtys, n_bids, ask_prices, ask_qtys, n_asks, fill_prices, fill_qtys, fill_sides, fill_seqs, fhead, fcount)
-  let _ = spawn.spawn(engine_thunk)
-  let _ = spawn.spawn(() => producer_buy(engine, pace_period, paused))
-  let _ = spawn.spawn(() => producer_sell(engine, pace_period, paused))
+  let engine = spawn_actor(engine_thunk)
+
+  # Producers only send, but Actor.send is an Actor op too, so each
+  # needs its own handler — with_mailbox gives them one.
+  let _ = spawn.spawn(() => with_mailbox { producer_buy(engine, pace_period, paused) })
+  let _ = spawn.spawn(() => with_mailbox { producer_sell(engine, pace_period, paused) })
 
   frame_loop(paused, pace_period,
              total_orders, total_fills, total_volume,
@@ -689,7 +690,7 @@ fn main() : Int / Ffi + Spawn + Mutable = {
   raylib.init_window(width, height, "Order book / kaikai + raylib + actors")
   raylib.set_target_fps(60)
 
-  with_mailbox { run() }
+  run()
 
   raylib.close_window()
   0
