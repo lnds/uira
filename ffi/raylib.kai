@@ -441,9 +441,84 @@ pub fn seek_music(music: Music, position: F32) : Unit / Ffi
 extern "C"("UnloadMusicStream")
 pub fn unload_music(music: Music) : Unit / Ffi
 
+# ----- colour helpers (Color by value) -----
+#
+# rgba() packs a hex literal; these transform Colors raylib's way.
+# color_from_hsv is handy for spreading hues; fade/color_alpha adjust
+# transparency; color_lerp blends two Colors.
+
+extern "C"("Fade")
+pub fn fade(color: Color, alpha: F32) : Color / Ffi
+
+extern "C"("ColorAlpha")
+pub fn color_alpha(color: Color, alpha: F32) : Color / Ffi
+
+extern "C"("ColorFromHSV")
+pub fn color_from_hsv(hue: F32, saturation: F32, value: F32) : Color / Ffi
+
+extern "C"("ColorTint")
+pub fn color_tint(color: Color, tint: Color) : Color / Ffi
+
+extern "C"("ColorBrightness")
+pub fn color_brightness(color: Color, factor: F32) : Color / Ffi
+
+extern "C"("ColorLerp")
+pub fn color_lerp(a: Color, b: Color, factor: F32) : Color / Ffi
+
+# Pack/unpack a 0xRRGGBBAA int (GetColor is the inverse of color_to_int).
+extern "C"("GetColor")
+pub fn get_color(hex: I32) : Color / Ffi
+
+extern "C"("ColorToInt")
+pub fn color_to_int(color: Color) : I32 / Ffi
+
+# ----- text measurement -----
+#
+# measure_text is the default-font width in pixels; measure_text_ex
+# takes a custom Font (by value, like draw_text_ex) and returns the
+# {width, height} extent as a Vector2.
+
+extern "C"("MeasureText")
+pub fn measure_text(s: String, size: I32) : I32 / Ffi
+
+extern "C"("MeasureTextEx")
+pub fn measure_text_ex(font: Font, s: String, size: F32, spacing: F32) : Vector2 / Ffi
+
+extern "C"("SetTextLineSpacing")
+pub fn set_text_line_spacing(spacing: I32) : Unit / Ffi
+
+# ----- timing -----
+#
+# get_frame_time is the seconds elapsed since the last frame — the
+# delta to scale movement by so it's frame-rate independent.
+
+extern "C"("GetFrameTime")
+pub fn get_frame_time() : F32 / Ffi
+
+extern "C"("WaitTime")
+pub fn wait_time(seconds: Real) : Unit / Ffi
+
 # ----- math (libm direct) -----
 
 extern "C" pub fn sin(x: Real) : Real / Ffi
 extern "C" pub fn cos(x: Real) : Real / Ffi
+extern "C" pub fn tan(x: Real) : Real / Ffi
+extern "C" pub fn asin(x: Real) : Real / Ffi
+extern "C" pub fn acos(x: Real) : Real / Ffi
+extern "C" pub fn atan(x: Real) : Real / Ffi
 extern "C" pub fn atan2(y: Real, x: Real) : Real / Ffi
 extern "C" pub fn sqrt(x: Real) : Real / Ffi
+extern "C" pub fn pow(x: Real, y: Real) : Real / Ffi
+extern "C" pub fn exp(x: Real) : Real / Ffi
+extern "C" pub fn log(x: Real) : Real / Ffi
+extern "C" pub fn floor(x: Real) : Real / Ffi
+extern "C" pub fn ceil(x: Real) : Real / Ffi
+extern "C" pub fn round(x: Real) : Real / Ffi
+extern "C" pub fn fabs(x: Real) : Real / Ffi
+extern "C" pub fn fmod(x: Real, y: Real) : Real / Ffi
+extern "C" pub fn hypot(x: Real, y: Real) : Real / Ffi
+
+# raymath's scalar helpers (Clamp/Lerp/Remap/Wrap) are intentionally
+# NOT bound: they're one-liners in kaikai, and binding them under
+# common names like `clamp` collides with a caller's own `clamp` on
+# the native backend. Write them inline instead.
