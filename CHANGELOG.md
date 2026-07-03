@@ -1,3 +1,9 @@
+## v0.5.0 (2026-07-02)
+
+### Feat
+
+- **ffi**: colour/text/timing helpers + more libm math
+
 ## v0.4.0 (2026-07-02)
 
 ### Feat
