@@ -27,6 +27,13 @@ extern "C" type Texture2D = {
   id: U32, width: I32, height: I32, mipmaps: I32, format: I32
 }
 
+# Camera2D is all scalars (two Vector2 + two F32), so it crosses by
+# value. `offset` is the screen-space anchor, `target` the world point
+# under it; `zoom` scales around the target (1.0 = no zoom).
+extern "C" type Camera2D = {
+  offset: Vector2, target: Vector2, rotation: F32, zoom: F32
+}
+
 # Font, Sound and Music embed pointers into raylib's internals
 # (glyph tables, audio buffers). They still cross by value: the
 # pointer fields ride along as opaque I64 words — kaikai copies the
@@ -197,6 +204,53 @@ pub fn check_collision_point_rec(point: Vector2, rec: Rect) : Bool / Ffi
 
 extern "C"("CheckCollisionPointCircle")
 pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: F32) : Bool / Ffi
+
+# ----- textures (Texture2D crosses by value; no shim) -----
+#
+# LoadTexture reads a PNG/JPG/… straight into VRAM and returns the
+# Texture2D by value. draw_texture_pro is the sprite-sheet workhorse:
+# `source` is the sub-rectangle to sample, `dest` where to put it (with
+# scaling), `origin` the pivot for `rotation`.
+
+extern "C"("LoadTexture")
+pub fn load_texture(path: String) : Texture2D / Ffi
+
+extern "C"("UnloadTexture")
+pub fn unload_texture(texture: Texture2D) : Unit / Ffi
+
+extern "C"("DrawTexture")
+pub fn draw_texture(texture: Texture2D, x: I32, y: I32, tint: Color) : Unit / Ffi
+
+extern "C"("DrawTextureV")
+pub fn draw_texture_v(texture: Texture2D, position: Vector2, tint: Color) : Unit / Ffi
+
+extern "C"("DrawTextureEx")
+pub fn draw_texture_ex(texture: Texture2D, position: Vector2, rotation: F32, scale: F32, tint: Color) : Unit / Ffi
+
+extern "C"("DrawTextureRec")
+pub fn draw_texture_rec(texture: Texture2D, source: Rect, position: Vector2, tint: Color) : Unit / Ffi
+
+extern "C"("DrawTexturePro")
+pub fn draw_texture_pro(texture: Texture2D, source: Rect, dest: Rect, origin: Vector2, rotation: F32, tint: Color) : Unit / Ffi
+
+# ----- 2D camera (Camera2D crosses by value) -----
+#
+# Wrap world-space drawing between begin_mode_2d / end_mode_2d: every
+# shape drawn inside is transformed by the camera (pan via target,
+# zoom via zoom). The screen<->world helpers convert a point the same
+# way, e.g. to turn a mouse position into a world coordinate.
+
+extern "C"("BeginMode2D")
+pub fn begin_mode_2d(camera: Camera2D) : Unit / Ffi
+
+extern "C"("EndMode2D")
+pub fn end_mode_2d() : Unit / Ffi
+
+extern "C"("GetWorldToScreen2D")
+pub fn get_world_to_screen_2d(position: Vector2, camera: Camera2D) : Vector2 / Ffi
+
+extern "C"("GetScreenToWorld2D")
+pub fn get_screen_to_world_2d(position: Vector2, camera: Camera2D) : Vector2 / Ffi
 
 # ----- input: keyboard -----
 #
