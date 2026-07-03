@@ -11,12 +11,14 @@ as a reusable module plus ten demos that exercise it.
 The binding covers the slice of raylib needed for 2D games and
 visualisations: window lifecycle, frame loop, basic shapes,
 text, input, random, audio (SFX + music), and a handful of math
-helpers. `Color`, `Vector2` and `Rectangle` cross the boundary
-by value as `extern "C" type` records whose layout matches
-raylib's, so the bindings link straight to raylib with no C shim.
-The exceptions are fonts and audio: raylib's `Font`, `Sound` and
-`Music` hold pointers, so each goes through a tiny slot-table
-shim (`ffi/raylib_fonts.c`, `ffi/raylib_audio.c`). See
+helpers. Every raylib struct crosses the boundary by value as an
+`extern "C" type` record whose layout matches raylib's, so the
+bindings link straight to raylib. That includes `Font`, `Sound`
+and `Music`: even though they hold pointers into raylib's
+internals, those pointer fields ride across as opaque words that
+kaikai copies without dereferencing. The one thing that can't
+cross is a synthesised tone's sample buffer, so `gen_tone` keeps
+a tiny C shim (`ffi/raylib_audio.c`). See
 [docs/ffi-v2-migration.md](docs/ffi-v2-migration.md) for the
 design.
 
@@ -26,8 +28,7 @@ design.
 uira/
 ├── ffi/
 │   ├── raylib.kai        # kaikai-side bindings (raylib direct)
-│   ├── raylib_fonts.c    # font slot-table shim (Font isn't by-value)
-│   └── raylib_audio.c    # audio slot-table shim (Sound/Music aren't by-value)
+│   └── raylib_audio.c    # gen_tone shim (synthesises a sample buffer)
 ├── conway.kai            # demo: Game of Life
 ├── boids.kai             # demo: Reynolds flocking
 ├── mandelbrot.kai        # demo: Mandelbrot explorer (pan + zoom)
@@ -93,7 +94,7 @@ fn loop() : Unit / Ffi {
 ```
 
 Build it the same way as the demos — see the `Makefile` for the
-exact incantation. The short version: pipe the font shim and
+exact incantation. The short version: pipe the `gen_tone` shim and
 `pkg-config --cflags --libs raylib` through `CFLAGS`, and let
 `kai build` do the rest. The demos
 `import loop` for `repeat` / `until` / `while` / `forever`.
@@ -137,24 +138,21 @@ and pass the result to anything that paints. `Vector2` and
 
 ### Fonts
 
-`Font` isn't a by-value struct, so it goes through a slot table
-in `ffi/raylib_fonts.c`. `load_font` returns a slot (or `-1`);
-`draw_text_ex(-1, ...)` falls back to the default bitmap font.
+`Font` crosses by value: `load_font` returns a `Font` you pass
+straight to `draw_text_ex`. The pointer fields inside it ride
+across as opaque words.
 
-| `pub fn`                                       | C symbol                  |
-| ---------------------------------------------- | ------------------------- |
-| `load_font(path, size)`                        | `kai_raylib_load_font`    |
-| `unload_font(slot)`                            | `kai_raylib_unload_font`  |
-| `draw_text_ex(slot, s, x, y, size, spacing, color)` | `kai_raylib_draw_text_ex` |
+| `pub fn`                                       | C symbol      |
+| ---------------------------------------------- | ------------- |
+| `load_font(path, size)`                        | `LoadFontEx`  |
+| `unload_font(font)`                            | `UnloadFont`  |
+| `draw_text_ex(font, s, x, y, size, spacing, color)` | `DrawTextEx`  |
 
 ### Audio
 
 `Sound` and `Music` embed an `AudioStream` with internal pointers,
-so like `Font` they go through a slot table
-(`ffi/raylib_audio.c`). Call `init_audio_device()` once before
-loading anything. Loaders return a slot (or `-1` when the table
-is full or the asset is invalid); every play/stop/volume call is a
-no-op on a `-1` slot, so the error propagates harmlessly.
+but still cross by value — the pointers ride along as opaque words.
+Call `init_audio_device()` once before loading anything.
 
 **Sounds** are short SFX, loaded whole into memory:
 
@@ -166,12 +164,12 @@ no-op on a `-1` slot, so the error propagates harmlessly.
 | `set_master_volume(v)`              | `SetMasterVolume` |
 | `load_sound(path)`                  | `LoadSound`       |
 | `gen_tone(freq, seconds, amp)`      | `LoadSoundFromWave` (synth) |
-| `play_sound(slot)`                  | `PlaySound`       |
-| `stop_sound(slot)`                  | `StopSound`       |
-| `sound_playing(slot)`               | `IsSoundPlaying`  |
-| `set_sound_volume(slot, v)`         | `SetSoundVolume`  |
-| `set_sound_pitch(slot, p)`          | `SetSoundPitch`   |
-| `unload_sound(slot)`                | `UnloadSound`     |
+| `play_sound(sound)`                 | `PlaySound`       |
+| `stop_sound(sound)`                 | `StopSound`       |
+| `sound_playing(sound)`              | `IsSoundPlaying`  |
+| `set_sound_volume(sound, v)`        | `SetSoundVolume`  |
+| `set_sound_pitch(sound, p)`         | `SetSoundPitch`   |
+| `unload_sound(sound)`               | `UnloadSound`     |
 
 `gen_tone` synthesises a mono sine straight to a `Sound` (no file
 needed) — handy for placeholder SFX; it's what `audiopad.kai` uses.
@@ -182,16 +180,16 @@ to refill the buffers:
 | `pub fn`                            | raylib            |
 | ----------------------------------- | ----------------- |
 | `load_music(path)`                  | `LoadMusicStream` |
-| `play_music(slot)`                  | `PlayMusicStream` |
-| `update_music(slot)`                | `UpdateMusicStream` |
-| `stop_music(slot)`                  | `StopMusicStream` |
-| `pause_music(slot)`                 | `PauseMusicStream` |
-| `resume_music(slot)`                | `ResumeMusicStream` |
-| `music_playing(slot)`               | `IsMusicStreamPlaying` |
-| `set_music_volume(slot, v)`         | `SetMusicVolume`  |
-| `set_music_looping(slot, on)`       | (sets `Music.looping`) |
-| `seek_music(slot, seconds)`         | `SeekMusicStream` |
-| `unload_music(slot)`                | `UnloadMusicStream` |
+| `play_music(music)`                 | `PlayMusicStream` |
+| `update_music(music)`               | `UpdateMusicStream` |
+| `stop_music(music)`                 | `StopMusicStream` |
+| `pause_music(music)`                | `PauseMusicStream` |
+| `resume_music(music)`               | `ResumeMusicStream` |
+| `music_playing(music)`              | `IsMusicStreamPlaying` |
+| `set_music_volume(music, v)`        | `SetMusicVolume`  |
+| `set_music_pitch(music, p)`         | `SetMusicPitch`   |
+| `seek_music(music, seconds)`        | `SeekMusicStream` |
+| `unload_music(music)`               | `UnloadMusicStream` |
 
 raylib decodes by file extension: `.wav`, `.ogg`, `.mp3`, `.flac`,
 `.qoa`, `.xm` and `.mod`. A minimal background-music loop:
@@ -199,7 +197,6 @@ raylib decodes by file extension: `.wav`, `.ogg`, `.mp3`, `.flac`,
 ```kaikai
 raylib.init_audio_device()
 let song = raylib.load_music("assets/theme.ogg")
-raylib.set_music_looping(song, true)
 raylib.play_music(song)
 
 until { raylib.window_should_close() } {
@@ -248,13 +245,16 @@ emits must NOT `-include raylib.h`, or raylib's `Color`/`Vector2`
 typedefs collide with the ones kaikai generates. The Makefile
 only links `libraylib`; it never pulls `raylib.h` into `out.c`.
 
-Fonts are the exception. raylib's `Font` holds pointers and a
-nested `Texture2D`, so it can't be a by-value record. It goes
-through [`ffi/raylib_fonts.c`](ffi/raylib_fonts.c): a slot table
-with scalar-only entry points. That file is a separate
-translation unit that *does* include `raylib.h` and uses raylib's
-own `Color` (ABI-identical to kaikai's) in its `draw_text_ex`
-prototype.
+`Font`, `Sound` and `Music` cross the same way even though they
+hold pointers into raylib's internals: those pointer fields are
+declared as opaque `I64` words, so kaikai copies their bits across
+without dereferencing them and raylib gets them back intact. The
+only thing that can't cross is a synthesised tone's sample buffer
+— `gen_tone` has to `MemAlloc` and fill a `short *`, which the FFI
+can't express — so it lives in
+[`ffi/raylib_audio.c`](ffi/raylib_audio.c): one function, a
+separate translation unit that *does* include `raylib.h` and
+returns a `Sound` by value.
 
 The build pipeline:
 
@@ -262,8 +262,7 @@ The build pipeline:
 *.kai  --kaic2 (native backend)-->  binary
                                        ^
                                        |
-                  ffi/raylib_fonts.c (linked via CFLAGS)
-                  ffi/raylib_audio.c (linked via CFLAGS)
+                  ffi/raylib_audio.c (gen_tone, linked via CFLAGS)
                   libraylib          (linked via CFLAGS)
 ```
 
@@ -356,13 +355,17 @@ for the new octave. Doubles as the smoke test for the audio shim.
 
 - **`raylib.h` must stay out of the emitted code.** kaikai emits
   its own `Color`/`Vector2` typedefs; pulling in `raylib.h` (e.g.
-  via `-include`) collides with them. The font shim includes
+  via `-include`) collides with them. The `gen_tone` shim includes
   `raylib.h` in its own translation unit instead.
-- **`Font`, `Sound` and `Music` aren't by-value.** Their pointers
-  (and `Font`'s nested texture, `Sound`/`Music`'s embedded
-  `AudioStream`) mean they can't be `extern "C" type` records, so
-  each keeps a slot-table shim rather than crossing the boundary
-  directly.
+- **Pointer fields cross as opaque `I64` words.** `Font`, `Sound`
+  and `Music` embed pointers into raylib's internals; the binding
+  declares those fields as `I64` and never dereferences them, so
+  kaikai just ferries the bits. It works because a struct built by
+  raylib always travels back to raylib before anyone reads the
+  pointers — kaikai can't fabricate one of these from scratch.
+- **`gen_tone` can't be pure kaikai.** Synthesising a tone means
+  allocating and filling a `short *` sample buffer, which the FFI
+  has no way to express — hence the one remaining C shim.
 
 ## License
 
