@@ -1,0 +1,3 @@
+# A binding module that exports a C function under the bare name `clamp`.
+extern "C"("Clamp")
+pub fn clamp(v: F32, lo: F32, hi: F32) : F32 / Ffi

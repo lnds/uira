@@ -36,3 +36,28 @@ no longer carries its type tag.
 every frame and panicked on the second frame. Rebuilding the array
 each frame avoids it. Left unfixed in the demo pending an upstream
 fix, so the demo keeps exercising the real path.
+
+## native backend: FFI name collides with a same-named local function
+
+**Version:** kaikai 0.98.0, arm64 Darwin.
+**Repro:** [`ffi_name_collision/`](ffi_name_collision/) — two modules.
+
+When one module binds a C function under a bare name (e.g. `clamp`) and
+another module imports it *and* defines its own local `clamp`, the
+native backend emits a reference to an internal helper it mangles as
+`__ffi_clamp`, which is never defined:
+
+```
+kai build --backend=native docs/bugs/ffi_name_collision
+  Undefined symbols for architecture arm64:
+    "___ffi_clamp", referenced from: __kai_lam_0 in main.o
+```
+
+The C backend links the same source fine. The FFI thunk's mangled name
+collides with the `__ffi_<name>` runtime-helper namespace for certain
+names — `clamp` and `wrap` observed.
+
+**Where it bit us:** binding raymath's `Clamp`/`Wrap` under the names
+`clamp`/`wrap` broke any demo with its own `clamp` (e.g. `sprites.kai`).
+Worked around by not binding those scalar helpers at all — they're
+one-liners in kaikai — so the names stay free for callers.

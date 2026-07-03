@@ -1,0 +1,23 @@
+# Imports the binding (which exports an FFI `clamp`) AND defines its own
+# local `clamp`. On the native backend this makes the emitted code
+# reference an internal helper `__ffi_clamp` that is never defined:
+#
+#   Undefined symbols for architecture arm64:
+#     "___ffi_clamp", referenced from: __kai_lam_0 in main.o
+#
+# The C backend links the same source fine — a native-backend codegen
+# bug where the FFI thunk's mangled name collides with the user's
+# same-named function. Observed for `clamp` and `wrap`.
+#
+#   kai build --backend=native .   # link error
+#   kai build --backend=c      .   # ok
+import lib.rl
+
+fn clamp(v: Real, lo: Real, hi: Real) : Real =
+  if v < lo { lo } else if v > hi { hi } else { v }
+
+fn main() : Unit / Ffi = {
+  let f = () => clamp(5.0, 0.0, 3.0)
+  let _ = f()
+  ()
+}
