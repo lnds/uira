@@ -23,10 +23,10 @@ SHIMS   := $(AUDIO_C)
 KAI_CFLAGS := -std=c99 -O2 -Wno-unused-function -Wno-unused-variable \
               $(RAYLIB_CFLAGS) $(SHIMS) $(RAYLIB_LIBS)
 
-.PHONY: all conway boids mandelbrot snake kaikai solar portfolio orderbook observatory audiopad \
-        run-conway run-boids run-mandelbrot run-snake run-kaikai run-solar run-portfolio run-orderbook run-observatory run-audiopad clean
+.PHONY: all conway boids mandelbrot snake kaikai solar portfolio orderbook observatory audiopad sprites \
+        run-conway run-boids run-mandelbrot run-snake run-kaikai run-solar run-portfolio run-orderbook run-observatory run-audiopad run-sprites clean
 
-all: conway boids mandelbrot snake kaikai solar portfolio orderbook observatory audiopad
+all: conway boids mandelbrot snake kaikai solar portfolio orderbook observatory audiopad sprites
 
 conway: build/conway
 
@@ -113,3 +113,11 @@ build/audiopad: audiopad.kai ffi/raylib.kai $(SHIMS) | build
 
 run-audiopad: build/audiopad
 	./build/audiopad
+
+sprites: build/sprites
+
+build/sprites: sprites.kai ffi/raylib.kai ffi/keys.kai $(SHIMS) | build
+	CFLAGS="$(KAI_CFLAGS)" $(KAI_BIN) build $(KAI_BACKEND) sprites.kai -o $@
+
+run-sprites: build/sprites
+	./build/sprites

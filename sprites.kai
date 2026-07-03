@@ -1,0 +1,226 @@
+# Sprites & camera — kaikai + raylib showcase
+#
+# A little top-down world larger than the window: grass tiles, trees
+# and rocks scattered across 2000x1500, with a hero you walk around.
+# The 2D camera follows the hero (pan) and the mouse wheel zooms. It
+# exercises the by-value texture + Camera2D bindings end to end:
+# LoadTexture, DrawTexturePro (with horizontal flip via a negative
+# source width), BeginMode2D/EndMode2D, and screen<->world mapping.
+#
+# Layout mirrors the other demos:
+#   1. ===== MODEL =====  world constants, prop placement. Pure.
+#   2. ===== STATE =====  hero position + facing + walk clock, camera
+#                          zoom. Ref cells / vars.
+#   3. ===== VIEW  =====  raylib rendering under the camera.
+#
+# Controles:
+#   WASD / flechas   mover
+#   rueda del mouse  zoom
+#   R                recentrar la cámara
+#   ESC              salir
+
+import ffi.raylib
+import ffi.keys
+import loop
+
+# ============================================================
+#  1. ===== MODEL ===============================================
+# ============================================================
+
+const world_w : Real = 2000.0
+const world_h : Real = 1500.0
+const win_w   : Int  = 900
+const win_h   : Int  = 600
+
+const hero_speed : Real = 260.0    # px/segundo
+const tile       : Int  = 64       # grass tile drawn at 4x (16px * 4)
+
+# Props: árboles y rocas en posiciones fijas (deterministas). Cada uno
+# es (world_x, world_y, kind) con kind 0 = árbol, 1 = roca.
+const n_props : Int = 14
+
+fn prop_x(i: Int) : Real {
+  if i == 0 { 300.0 }  else if i == 1 { 620.0 }  else if i == 2 { 880.0 }
+  else if i == 3 { 1150.0 } else if i == 4 { 1480.0 } else if i == 5 { 1760.0 }
+  else if i == 6 { 420.0 }  else if i == 7 { 980.0 }  else if i == 8 { 1320.0 }
+  else if i == 9 { 1600.0 } else if i == 10 { 240.0 } else if i == 11 { 740.0 }
+  else if i == 12 { 1100.0 } else { 1850.0 }
+}
+
+fn prop_y(i: Int) : Real {
+  if i == 0 { 260.0 }  else if i == 1 { 480.0 }  else if i == 2 { 200.0 }
+  else if i == 3 { 620.0 }  else if i == 4 { 340.0 }  else if i == 5 { 700.0 }
+  else if i == 6 { 900.0 }  else if i == 7 { 1080.0 } else if i == 8 { 820.0 }
+  else if i == 9 { 1180.0 } else if i == 10 { 1240.0 } else if i == 11 { 1320.0 }
+  else if i == 12 { 460.0 } else { 980.0 }
+}
+
+# Even index = tree, odd = rock (just to mix them).
+fn prop_is_tree(i: Int) : Bool = i % 2 == 0
+
+# Clamp a world coordinate so the hero can't leave the map.
+fn clamp(v: Real, lo: Real, hi: Real) : Real {
+  if v < lo { lo } else if v > hi { hi } else { v }
+}
+
+# ============================================================
+#  2. ===== STATE ===============================================
+# ============================================================
+
+# Advance the hero from held keys; returns the new position via refs.
+# `facing` is +1 (right) or -1 (left); `moving` arms the walk cycle.
+fn step_hero(hx: Ref[Real], hy: Ref[Real], facing: Ref[Int],
+             moving: Ref[Int], dt: Real) : Unit / Ffi + Mutable = {
+  var vx := 0.0
+  var vy := 0.0
+  if raylib.is_key_down(key_a) or raylib.is_key_down(key_left)  { vx := vx - 1.0 }
+  if raylib.is_key_down(key_d) or raylib.is_key_down(key_right) { vx := vx + 1.0 }
+  if raylib.is_key_down(key_w) or raylib.is_key_down(key_up)    { vy := vy - 1.0 }
+  if raylib.is_key_down(key_s) or raylib.is_key_down(key_down)  { vy := vy + 1.0 }
+
+  if vx > 0.0 { facing := 1 }
+  if vx < 0.0 { facing := 0 - 1 }
+  if vx != 0.0 or vy != 0.0 { moving := 1 } else { moving := 0 }
+
+  hx := clamp(@hx + vx * hero_speed * dt, 0.0, world_w)
+  hy := clamp(@hy + vy * hero_speed * dt, 0.0, world_h)
+}
+
+# ============================================================
+#  3. ===== VIEW ================================================
+# ============================================================
+
+const col_bg  : Color = rgba(0x0d1510ff)
+const col_hud : Color = rgba(0xd8f0e0ff)
+const col_dim : Color = rgba(0x6a8a76ff)
+const col_edge : Color = rgba(0x2a4030ff)
+const white   : Color = rgba(0xffffffff)
+
+# Tile the grass texture across the whole world. Only tiles inside the
+# camera's rough view are worth drawing, but the map is small enough to
+# just paint them all.
+fn draw_ground(grass: Texture2D, tx: Int, ty: Int) : Unit / Ffi = {
+  if ty * tile >= real_to_int(world_h) { () }
+  else {
+    draw_ground_row(grass, tx, ty)
+    draw_ground(grass, tx, ty + 1)
+  }
+}
+
+fn draw_ground_row(grass: Texture2D, tx: Int, ty: Int) : Unit / Ffi = {
+  if tx * tile >= real_to_int(world_w) { () }
+  else {
+    raylib.draw_texture_ex(grass, Vector2 { x: int_to_real(tx * tile), y: int_to_real(ty * tile) },
+                           0.0, 4.0, white)
+    draw_ground_row(grass, tx + 1, ty)
+  }
+}
+
+fn draw_props(tree: Texture2D, rock: Texture2D, i: Int) : Unit / Ffi = {
+  if i >= n_props { () }
+  else {
+    let px = prop_x(i)
+    let py = prop_y(i)
+    if prop_is_tree(i) {
+      raylib.draw_texture_ex(tree, Vector2 { x: px, y: py }, 0.0, 4.0, white)
+    } else {
+      raylib.draw_texture_ex(rock, Vector2 { x: px, y: py }, 0.0, 4.0, white)
+    }
+    draw_props(tree, rock, i + 1)
+  }
+}
+
+# Draw the hero at (hx,hy) scaled up, picking the walk frame and
+# flipping horizontally when facing left (negative source width). The
+# sheet is two 16x16 frames side by side.
+fn draw_hero(hero: Texture2D, hx: Real, hy: Real,
+             facing: Int, frame: Int) : Unit / Ffi = {
+  let fw = 16.0
+  let sx = int_to_real(frame) * fw
+  let flip = if facing < 0 { 0.0 - fw } else { fw }
+  let src = Rect { x: sx, y: 0.0, w: flip, h: 16.0 }
+  let scale = 4.0
+  let dst = Rect { x: hx, y: hy, w: fw * scale, h: 16.0 * scale }
+  # origin centres the sprite on (hx,hy).
+  let origin = Vector2 { x: fw * scale / 2.0, y: 16.0 * scale / 2.0 }
+  raylib.draw_texture_pro(hero, src, dst, origin, 0.0, white)
+}
+
+fn draw_hud(zoom: Real) : Unit / Ffi = {
+  raylib.draw_text("sprites & camera / kaikai + raylib", 16, 14, 22, col_hud)
+  raylib.draw_text("WASD / flechas mover    rueda zoom    R recentrar    ESC salir",
+                   16, 44, 15, col_dim)
+  raylib.draw_text("zoom " ++ real_to_string(zoom), 16, 70, 15, col_dim)
+}
+
+# ============================================================
+#  ===== ORCHESTRATOR ===========================================
+# ============================================================
+
+fn frame_loop(hero: Texture2D, tree: Texture2D, rock: Texture2D, grass: Texture2D)
+    : Unit / Ffi + Mutable = {
+  let hx = Mutable.ref_make(world_w / 2.0)
+  let hy = Mutable.ref_make(world_h / 2.0)
+  let facing = Mutable.ref_make(1)
+  let moving = Mutable.ref_make(0)
+  var zoom := 1.5
+  var walk_t := 0.0
+  var prev := raylib.get_time()
+
+  until { raylib.window_should_close() } {
+    # ---- input / time ----
+    let now = raylib.get_time()
+    let dt = now - prev
+    prev := now
+
+    step_hero(hx, hy, facing, moving, dt)
+
+    let wheel = raylib.get_mouse_wheel_move()
+    if wheel != 0.0 { zoom := clamp(zoom + wheel * 0.15, 0.5, 4.0) }
+    if raylib.is_key_pressed(key_r) { zoom := 1.5 }
+
+    # Walk animation clock: advance only while moving.
+    if @moving == 1 { walk_t := walk_t + dt } else { walk_t := 0.0 }
+    let frame = if @moving == 1 and real_to_int(walk_t * 8.0) % 2 == 1 { 1 } else { 0 }
+
+    # ---- camera follows the hero ----
+    let cam = Camera2D {
+      offset: Vector2 { x: int_to_real(win_w) / 2.0, y: int_to_real(win_h) / 2.0 },
+      target: Vector2 { x: @hx, y: @hy },
+      rotation: 0.0,
+      zoom: zoom,
+    }
+
+    # ---- render ----
+    raylib.begin_drawing()
+    raylib.clear_background(col_bg)
+
+    raylib.begin_mode_2d(cam)
+    draw_ground(grass, 0, 0)
+    raylib.draw_rectangle_lines(0, 0, real_to_int(world_w), real_to_int(world_h), col_edge)
+    draw_props(tree, rock, 0)
+    draw_hero(hero, @hx, @hy, @facing, frame)
+    raylib.end_mode_2d()
+
+    draw_hud(zoom)
+    raylib.end_drawing()
+  }
+}
+
+fn main() : Unit / Ffi + Mutable = {
+  raylib.init_window(win_w, win_h, "Sprites & camera / kaikai + raylib")
+  raylib.set_target_fps(60)
+
+  let hero  = raylib.load_texture("assets/hero.png")
+  let tree  = raylib.load_texture("assets/tree.png")
+  let rock  = raylib.load_texture("assets/rock.png")
+  let grass = raylib.load_texture("assets/grass.png")
+
+  frame_loop(hero, tree, rock, grass)
+
+  raylib.unload_texture(hero)
+  raylib.unload_texture(tree)
+  raylib.unload_texture(rock)
+  raylib.unload_texture(grass)
+  raylib.close_window()
+}

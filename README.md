@@ -28,7 +28,9 @@ design.
 uira/
 ├── ffi/
 │   ├── raylib.kai        # kaikai-side bindings (raylib direct)
+│   ├── keys.kai          # input constants (KEY_*, MOUSE_*, gamepad)
 │   └── raylib_audio.c    # gen_tone shim (synthesises a sample buffer)
+├── assets/               # pixel-art sprites for the sprites demo
 ├── conway.kai            # demo: Game of Life
 ├── boids.kai             # demo: Reynolds flocking
 ├── mandelbrot.kai        # demo: Mandelbrot explorer (pan + zoom)
@@ -38,6 +40,7 @@ uira/
 ├── orderbook.kai         # demo: matching engine (actors)
 ├── observatory.kai       # demo: N-body / HR diagram / parallax
 ├── audiopad.kai          # demo: one-octave synth keyboard (audio)
+├── sprites.kai           # demo: top-down world (textures + 2D camera)
 ├── kaikai.kai            # demo: morphing logo
 ├── Makefile
 └── README.md
@@ -350,6 +353,23 @@ A one-octave C-major keyboard. The eight tones are synthesised in
 memory at startup with `gen_tone` (one `Sound` per note), so the
 demo needs no audio files on disk; transposing re-generates them
 for the new octave. Doubles as the smoke test for the audio shim.
+
+### Sprites & camera — `sprites.kai`
+
+| Key            | Action                    |
+| -------------- | ------------------------- |
+| WASD / arrows  | Walk the hero             |
+| Mouse wheel    | Zoom                      |
+| R              | Recentre the zoom         |
+| ESC            | Quit                      |
+
+A top-down world larger than the window: grass tiles, trees and rocks
+over 2000×1500, with a hero you walk around. The 2D camera follows the
+hero and the wheel zooms. It's the end-to-end exercise for the by-value
+texture and `Camera2D` bindings — `load_texture`, `draw_texture_pro`
+(with a horizontal flip via a negative source width), `begin_mode_2d` /
+`end_mode_2d`, and `import ffi.keys` for the key codes. Sprites are the
+hand-drawn pixel art under `assets/`.
 
 ## Limitations / known gotchas
 
