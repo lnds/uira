@@ -568,7 +568,7 @@ const cy     : Real = 380.0
 # Jupiter+ at the same time without one or the other vanishing.
 fn px_per_au(scale: Real) : Real = scale
 
-fn draw_nbody(font: Int,
+fn draw_nbody(font: Font,
               xs: Array[Real], ys: Array[Real],
               ms: Array[Real],
               trails: Array[Real], head: Int,
@@ -590,7 +590,7 @@ fn draw_nbody(font: Int,
   raylib.draw_text_ex(font, real_to_string(scale), 510, 60, 20, 1.0, col_text)
 }
 
-fn draw_bodies_loop(font: Int,
+fn draw_bodies_loop(font: Font,
                     xs: Array[Real], ys: Array[Real],
                     ms: Array[Real], s: Real, i: Int) : Unit / Ffi = {
   if i >= n_bodies { () }
@@ -695,7 +695,7 @@ fn reduce_pow2(x: Real, k: Int) : Real = {
   else { int_to_real(k) * 1000000.0 + x }
 }
 
-fn draw_hr(font: Int) : Unit / Ffi = {
+fn draw_hr(font: Font) : Unit / Ffi = {
   raylib.draw_text_ex(font, "MODO  Diagrama Hertzsprung-Russell",
                    24, 18, 26, 1.0, col_text)
   raylib.draw_text_ex(font, "eje X: temperatura (K) decreciente   eje Y: luminosidad (L_sol)",
@@ -741,7 +741,7 @@ fn lum_to_y(l: Real, px_y: Int, px_h: Int) : Int = {
   real_to_int(y)
 }
 
-fn draw_hr_grid(font: Int, px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
+fn draw_hr_grid(font: Font, px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   # Temperature grid lines at the Harvard breakpoints.
   draw_temp_line(font, 30000.0, "30000K  O", px_x, px_y, px_w, px_h)
   draw_temp_line(font, 10000.0, "10000K  B", px_x, px_y, px_w, px_h)
@@ -759,21 +759,21 @@ fn draw_hr_grid(font: Int, px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / 
   draw_lum_line(font, 1000000.0, "1e6 L", px_x, px_y, px_w, px_h)
 }
 
-fn draw_temp_line(font: Int, t: Real, label: String,
+fn draw_temp_line(font: Font, t: Real, label: String,
                   px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let x = temp_to_x(t, px_x, px_w)
   raylib.draw_rectangle(x, px_y, 1, px_h, col_grid)
   raylib.draw_text_ex(font, label, x - 38, px_y + px_h + 6, 14, 1.0, col_dim)
 }
 
-fn draw_lum_line(font: Int, l: Real, label: String,
+fn draw_lum_line(font: Font, l: Real, label: String,
                  px_x: Int, px_y: Int, px_w: Int, px_h: Int) : Unit / Ffi = {
   let y = lum_to_y(l, px_y, px_h)
   raylib.draw_rectangle(px_x, y, px_w, 1, col_grid)
   raylib.draw_text_ex(font, label, px_x - 70, y - 8, 14, 1.0, col_dim)
 }
 
-fn draw_hr_stars(font: Int, px_x: Int, px_y: Int, px_w: Int, px_h: Int,
+fn draw_hr_stars(font: Font, px_x: Int, px_y: Int, px_w: Int, px_h: Int,
                  i: Int) : Unit / Ffi = {
   if i >= n_stars { () }
   else {
@@ -811,7 +811,7 @@ const pan_rx : Int = 560
 #
 # We project the unshifted RA/Dec into the panel first, then
 # nudge by the parallax shift in the X axis.
-fn project_star(font: Int, i: Int, obs_x: Real,
+fn project_star(font: Font, i: Int, obs_x: Real,
                 panel_x: Int, panel_w: Int, panel_h: Int) : Unit / Ffi = {
   # Base (RA, Dec) in flat-sky coords. RA: [0,24h] -> [0, panel_w].
   let ra = star_ra_h(i)
@@ -839,7 +839,7 @@ fn project_star(font: Int, i: Int, obs_x: Real,
 const parallax_gain : Real = 80.0   # visual amplification
 const arcsec_to_px  : Real = 1.0    # base scale
 
-fn draw_parallax(font: Int) : Unit / Ffi = {
+fn draw_parallax(font: Font) : Unit / Ffi = {
   raylib.draw_text_ex(font, "MODO  Paralaje estelar",
                    24, 18, 26, 1.0, col_text)
   raylib.draw_text_ex(font, "estrellas cercanas se desplazan entre enero y julio   |   base: 2 au   ganancia visual: 80x",
@@ -856,7 +856,7 @@ fn draw_parallax(font: Int) : Unit / Ffi = {
   draw_parallax_loop(font, pan_rx, pan_w, pan_h,  1.0,      0)
 }
 
-fn draw_parallax_loop(font: Int, panel_x: Int, panel_w: Int, panel_h: Int,
+fn draw_parallax_loop(font: Font, panel_x: Int, panel_w: Int, panel_h: Int,
                       obs_x: Real, i: Int) : Unit / Ffi = {
   if i >= n_stars { () }
   else {
@@ -867,7 +867,7 @@ fn draw_parallax_loop(font: Int, panel_x: Int, panel_w: Int, panel_h: Int,
 
 # ----- footer -----
 
-fn draw_footer(font: Int, active: Mode) : Unit / Ffi = {
+fn draw_footer(font: Font, active: Mode) : Unit / Ffi = {
   let y = height - 50
   raylib.draw_rectangle(0, y, width, 50, col_panel)
   raylib.draw_text_ex(font, "N  N-body     H  HR diagram     P  Paralaje     SPACE pausa     + -  velocidad     R reset     ESC salir",
@@ -886,7 +886,7 @@ const key_plus  : Int = 61
 const key_minus : Int = 45
 const key_r     : Int = 82
 
-fn frame_loop(font: Int,
+fn frame_loop(font: Font,
               xs: Array[Real], ys: Array[Real],
               vxs: Array[Real], vys: Array[Real],
               ms: Array[Real],
@@ -964,7 +964,7 @@ fn tick_mode(m: Mode,
   Parallax -> { () }
 }
 
-fn render_mode(font: Int, m: Mode,
+fn render_mode(font: Font, m: Mode,
                xs: Array[Real], ys: Array[Real], ms: Array[Real],
                trails: Array[Real], head: Int,
                scale: Real, sim_days: Real) : Unit / Ffi = match m {

@@ -13,13 +13,12 @@ KAI_BACKEND :=
 RAYLIB_CFLAGS := $(shell pkg-config --cflags raylib)
 RAYLIB_LIBS   := $(shell pkg-config --libs raylib)
 
-# Fonts and audio need a C shim — raylib's Font/Sound/Music aren't
-# by-value structs. Everything else binds straight to raylib. The
-# emitted out.c must NOT see raylib.h, so each shim is a separate
-# translation unit.
-FONTS_C := ffi/raylib_fonts.c
+# Font, Sound and Music all cross the FFI by value now, so they bind
+# straight to raylib. The one C shim left is gen_tone (synthesising a
+# tone needs a real sample buffer). It's a separate translation unit
+# because the emitted code must NOT see raylib.h.
 AUDIO_C := ffi/raylib_audio.c
-SHIMS   := $(FONTS_C) $(AUDIO_C)
+SHIMS   := $(AUDIO_C)
 
 KAI_CFLAGS := -std=c99 -O2 -Wno-unused-function -Wno-unused-variable \
               $(RAYLIB_CFLAGS) $(SHIMS) $(RAYLIB_LIBS)

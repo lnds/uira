@@ -7,11 +7,11 @@
 # or its generated `Color`/`Vector2` typedefs collide with raylib's.
 # kaikai's structs and raylib's share layout; the linker bridges them.
 #
-# Fonts are the exception: raylib's `Font` holds pointers and a
-# nested `Texture2D`, so it can't be an `extern "C" type`. It goes
-# through the tiny `ffi/raylib_fonts.c` shim, which keeps a slot
-# table and exposes scalar-only entry points. Slot -1 means "no
-# custom font" — draw_text_ex falls back to DrawText.
+# Font, Sound and Music hold pointers into raylib's internals, but
+# still cross by value: those pointer fields ride along as opaque I64
+# words that kaikai copies without dereferencing. The one thing that
+# can't cross is a synthesised tone's sample buffer, so gen_tone stays
+# in ffi/raylib_audio.c.
 #
 # Math (sin/cos/atan2/sqrt) links directly to libm under bare names.
 
@@ -20,6 +20,36 @@
 extern "C" type Color   = { r: U8, g: U8, b: U8, a: U8 }
 extern "C" type Vector2 = { x: F32, y: F32 }
 extern "C" type Rect    = { x: F32, y: F32, w: F32, h: F32 }
+
+# Texture2D is all scalars (an OpenGL id + dimensions), so it crosses
+# by value with no shim.
+extern "C" type Texture2D = {
+  id: U32, width: I32, height: I32, mipmaps: I32, format: I32
+}
+
+# Font, Sound and Music embed pointers into raylib's internals
+# (glyph tables, audio buffers). They still cross by value: the
+# pointer fields ride along as opaque I64 words — kaikai copies the
+# bits without dereferencing them, and raylib gets them back intact.
+# The `Real` sample buffer behind a synthesised tone is the one thing
+# kaikai can't build, so gen_tone stays in ffi/raylib_audio.c.
+extern "C" type Font = {
+  base_size: I32, glyph_count: I32, glyph_padding: I32,
+  texture: Texture2D, recs: I64, glyphs: I64,
+}
+
+extern "C" type AudioStream = {
+  buffer: I64, processor: I64,
+  sample_rate: U32, sample_size: U32, channels: U32,
+}
+extern "C" type Sound = { stream: AudioStream, frame_count: U32 }
+# `looping` is a C `bool` (1 byte) but we widen it to I32 so the
+# field layout matches raylib's — the compiler pads it to 4 bytes
+# either way, and a fixed-width word keeps the by-value copy exact.
+extern "C" type Music = {
+  stream: AudioStream, frame_count: U32, looping: I32,
+  ctx_type: I32, ctx_data: I64,
+}
 
 # Pack a 0xRRGGBBAA literal into a Color. Lets call sites keep
 # writing colors as hex while a real struct crosses the boundary.
@@ -95,100 +125,115 @@ pub fn set_random_seed(s: I32) : Unit / Ffi
 extern "C"("GetRandomValue")
 pub fn get_random_value(min: I32, max: I32) : I32 / Ffi
 
-# ----- fonts (slot table in ffi/raylib_fonts.c) -----
-
-extern "C"("kai_raylib_load_font")
-pub fn load_font(path: String, size: I32) : Int / Ffi
-
-extern "C"("kai_raylib_unload_font")
-pub fn unload_font(slot: Int) : Unit / Ffi
-
-extern "C"("kai_raylib_draw_text_ex")
-pub fn draw_text_ex(slot: Int, s: String,
-                    x: I32, y: I32, size: I32,
-                    spacing: F32, color: Color) : Unit / Ffi
-
-# ----- audio (slot tables in ffi/raylib_audio.c) -----
+# ----- fonts (Font crosses by value; no shim) -----
 #
-# Sound and Music embed an AudioStream with internal pointers, so
-# like Font they can't cross by value: the shim keeps slot tables
-# and hands back Int slots. A slot of -1 (table full / asset
-# invalid) makes every play/stop/volume call a harmless no-op.
+# LoadFontEx bakes a glyph atlas at `size`; the returned Font carries
+# pointers into that atlas as opaque words. Pass it straight to
+# DrawTextEx / MeasureTextEx. draw_text_ex takes I32 x/y and packs the
+# Vector2 position itself, keeping the call site's pixel-integer feel.
 
-extern "C"("kai_raylib_init_audio")
+extern "C"("LoadFontEx")
+pub fn load_font_ex(path: String, size: I32, codepoints: I64, count: I32) : Font / Ffi
+
+# Load a font with the default character set (codepoints = NULL, 0).
+pub fn load_font(path: String, size: I32) : Font / Ffi =
+  load_font_ex(path, size, 0, 0)
+
+extern "C"("UnloadFont")
+pub fn unload_font(font: Font) : Unit / Ffi
+
+extern "C"("DrawTextEx")
+fn draw_text_ex_v(font: Font, s: String, pos: Vector2,
+                  size: F32, spacing: F32, color: Color) : Unit / Ffi
+
+pub fn draw_text_ex(font: Font, s: String,
+                    x: I32, y: I32, size: I32,
+                    spacing: F32, color: Color) : Unit / Ffi =
+  draw_text_ex_v(font, s, Vector2 { x: int_to_real(x), y: int_to_real(y) },
+                 int_to_real(size), spacing, color)
+
+# ----- audio (Sound / Music cross by value; no shim) -----
+#
+# Sound and Music embed an AudioStream whose pointers ride across as
+# opaque I64 words, same trick as Font. The one thing that stays in
+# C is gen_tone: synthesising a tone means allocating a sample buffer
+# and filling it, which the FFI can't express — see ffi/raylib_audio.c.
+
+extern "C"("InitAudioDevice")
 pub fn init_audio_device() : Unit / Ffi
 
-extern "C"("kai_raylib_close_audio")
+extern "C"("CloseAudioDevice")
 pub fn close_audio_device() : Unit / Ffi
 
-extern "C"("kai_raylib_audio_ready")
+extern "C"("IsAudioDeviceReady")
 pub fn audio_device_ready() : Bool / Ffi
 
-extern "C"("kai_raylib_set_master_volume")
+extern "C"("SetMasterVolume")
 pub fn set_master_volume(volume: F32) : Unit / Ffi
 
 # Sounds (short SFX, fully loaded in memory).
 
-extern "C"("kai_raylib_load_sound")
-pub fn load_sound(path: String) : Int / Ffi
+extern "C"("LoadSound")
+pub fn load_sound(path: String) : Sound / Ffi
 
 # Synthesise a mono sine of `seconds` at `freq` Hz (amp 0..1) into a
-# Sound — no file needed. Returns a slot, or -1.
+# Sound — no file needed. The sample buffer can't be built in kaikai,
+# so this stays in the C shim.
 extern "C"("kai_raylib_gen_tone")
-pub fn gen_tone(freq: F32, seconds: F32, amp: F32) : Int / Ffi
+pub fn gen_tone(freq: F32, seconds: F32, amp: F32) : Sound / Ffi
 
-extern "C"("kai_raylib_play_sound")
-pub fn play_sound(slot: Int) : Unit / Ffi
+extern "C"("PlaySound")
+pub fn play_sound(sound: Sound) : Unit / Ffi
 
-extern "C"("kai_raylib_stop_sound")
-pub fn stop_sound(slot: Int) : Unit / Ffi
+extern "C"("StopSound")
+pub fn stop_sound(sound: Sound) : Unit / Ffi
 
-extern "C"("kai_raylib_sound_playing")
-pub fn sound_playing(slot: Int) : Bool / Ffi
+extern "C"("IsSoundPlaying")
+pub fn sound_playing(sound: Sound) : Bool / Ffi
 
-extern "C"("kai_raylib_set_sound_volume")
-pub fn set_sound_volume(slot: Int, volume: F32) : Unit / Ffi
+extern "C"("SetSoundVolume")
+pub fn set_sound_volume(sound: Sound, volume: F32) : Unit / Ffi
 
-extern "C"("kai_raylib_set_sound_pitch")
-pub fn set_sound_pitch(slot: Int, pitch: F32) : Unit / Ffi
+extern "C"("SetSoundPitch")
+pub fn set_sound_pitch(sound: Sound, pitch: F32) : Unit / Ffi
 
-extern "C"("kai_raylib_unload_sound")
-pub fn unload_sound(slot: Int) : Unit / Ffi
+extern "C"("UnloadSound")
+pub fn unload_sound(sound: Sound) : Unit / Ffi
 
 # Music (long tracks, streamed; call update_music every frame).
 
-extern "C"("kai_raylib_load_music")
-pub fn load_music(path: String) : Int / Ffi
+extern "C"("LoadMusicStream")
+pub fn load_music(path: String) : Music / Ffi
 
-extern "C"("kai_raylib_play_music")
-pub fn play_music(slot: Int) : Unit / Ffi
+extern "C"("PlayMusicStream")
+pub fn play_music(music: Music) : Unit / Ffi
 
-extern "C"("kai_raylib_update_music")
-pub fn update_music(slot: Int) : Unit / Ffi
+extern "C"("UpdateMusicStream")
+pub fn update_music(music: Music) : Unit / Ffi
 
-extern "C"("kai_raylib_stop_music")
-pub fn stop_music(slot: Int) : Unit / Ffi
+extern "C"("StopMusicStream")
+pub fn stop_music(music: Music) : Unit / Ffi
 
-extern "C"("kai_raylib_pause_music")
-pub fn pause_music(slot: Int) : Unit / Ffi
+extern "C"("PauseMusicStream")
+pub fn pause_music(music: Music) : Unit / Ffi
 
-extern "C"("kai_raylib_resume_music")
-pub fn resume_music(slot: Int) : Unit / Ffi
+extern "C"("ResumeMusicStream")
+pub fn resume_music(music: Music) : Unit / Ffi
 
-extern "C"("kai_raylib_music_playing")
-pub fn music_playing(slot: Int) : Bool / Ffi
+extern "C"("IsMusicStreamPlaying")
+pub fn music_playing(music: Music) : Bool / Ffi
 
-extern "C"("kai_raylib_set_music_volume")
-pub fn set_music_volume(slot: Int, volume: F32) : Unit / Ffi
+extern "C"("SetMusicVolume")
+pub fn set_music_volume(music: Music, volume: F32) : Unit / Ffi
 
-extern "C"("kai_raylib_set_music_looping")
-pub fn set_music_looping(slot: Int, on: Bool) : Unit / Ffi
+extern "C"("SetMusicPitch")
+pub fn set_music_pitch(music: Music, pitch: F32) : Unit / Ffi
 
-extern "C"("kai_raylib_seek_music")
-pub fn seek_music(slot: Int, position: F32) : Unit / Ffi
+extern "C"("SeekMusicStream")
+pub fn seek_music(music: Music, position: F32) : Unit / Ffi
 
-extern "C"("kai_raylib_unload_music")
-pub fn unload_music(slot: Int) : Unit / Ffi
+extern "C"("UnloadMusicStream")
+pub fn unload_music(music: Music) : Unit / Ffi
 
 # ----- math (libm direct) -----
 
