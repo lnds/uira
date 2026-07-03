@@ -1,0 +1,54 @@
+import loop
+
+# Minimal repro of array corruption in kaikai 0.98 (native backend).
+#
+# A persistent Array of a sum type whose first payload is a String is
+# read/matched across loop iterations. The array is NEVER mutated after
+# it is built, yet the values read out CHANGE between iterations — the
+# struct is being corrupted (likely Perceus RC on the heap String
+# payload). In solar.kai this surfaces as `type mismatch in /`; reduced
+# to pure kaikai it surfaces as wrong values (same root, milder symptom).
+#
+# Expected: every frame prints identical per-body values.
+# Actual (kaikai 0.98, --backend=native): frame 1 differs from 0 and 2.
+
+type Body
+  = Star(String, Int, Real)
+  | Planet(String, Real, Real, Int, Real)
+
+const n : Int = 3
+
+fn build() : Array[Body] / Mutable {
+  let bs = array_make(n, Star("", 0, 0.0))
+  bs[0] := Star("sol", 1, 10.0)
+  bs[1] := Planet("earth", 1.0, 365.0, 2, 5.0)
+  bs[2] := Planet("mars", 1.5, 687.0, 3, 4.0)
+  bs
+}
+
+fn radius_ratio(b: Body) : Real = match b {
+  Star(_, _, r)          -> r / 2.0
+  Planet(_, d, _, _, r)  -> r / d
+}
+
+fn dump(bodies: Array[Body], i: Int) : Unit / Stdout = {
+  if i >= n { () }
+  else {
+    Stdout.print("  body #{int_to_string(i)}: ratio=#{real_to_string(radius_ratio(bodies[i]))}\n")
+    dump(bodies, i + 1)
+  }
+}
+
+fn loop_frames(bodies: Array[Body], frame: Int) : Unit / Mutable + Stdout = {
+  if frame >= 3 { () }
+  else {
+    Stdout.print("frame #{int_to_string(frame)}:\n")
+    dump(bodies, 0)
+    loop_frames(bodies, frame + 1)
+  }
+}
+
+fn main() : Unit / Mutable + Stdout = {
+  let bodies = build()
+  loop_frames(bodies, 0)
+}
