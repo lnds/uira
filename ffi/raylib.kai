@@ -17,20 +17,20 @@
 
 # ----- boundary types -----
 
-extern "C" type Color = { r: U8, g: U8, b: U8, a: U8 }
+extern "C" pub type Color = { r: U8, g: U8, b: U8, a: U8 }
 
-extern "C" type Vector2 = { x: F32, y: F32 }
+extern "C" pub type Vector2 = { x: F32, y: F32 }
 
-extern "C" type Rect = { x: F32, y: F32, w: F32, h: F32 }
+extern "C" pub type Rect = { x: F32, y: F32, w: F32, h: F32 }
 
 # Texture2D is all scalars (an OpenGL id + dimensions), so it crosses
 # by value with no shim.
-extern "C" type Texture2D = { id: U32, width: I32, height: I32, mipmaps: I32, format: I32 }
+extern "C" pub type Texture2D = { id: U32, width: I32, height: I32, mipmaps: I32, format: I32 }
 
 # Camera2D is all scalars (two Vector2 + two F32), so it crosses by
 # value. `offset` is the screen-space anchor, `target` the world point
 # under it; `zoom` scales around the target (1.0 = no zoom).
-extern "C" type Camera2D = { offset: Vector2, target: Vector2, rotation: F32, zoom: F32 }
+extern "C" pub type Camera2D = { offset: Vector2, target: Vector2, rotation: F32, zoom: F32 }
 
 # Font, Sound and Music embed pointers into raylib's internals
 # (glyph tables, audio buffers). They still cross by value: the
@@ -38,16 +38,16 @@ extern "C" type Camera2D = { offset: Vector2, target: Vector2, rotation: F32, zo
 # bits without dereferencing them, and raylib gets them back intact.
 # The `Real` sample buffer behind a synthesised tone is the one thing
 # kaikai can't build, so gen_tone stays in ffi/raylib_audio.c.
-extern "C" type Font = { base_size: I32, glyph_count: I32, glyph_padding: I32, texture: Texture2D, recs: I64, glyphs: I64 }
+extern "C" pub type Font = { base_size: I32, glyph_count: I32, glyph_padding: I32, texture: Texture2D, recs: I64, glyphs: I64 }
 
-extern "C" type AudioStream = { buffer: I64, processor: I64, sample_rate: U32, sample_size: U32, channels: U32 }
+extern "C" pub type AudioStream = { buffer: I64, processor: I64, sample_rate: U32, sample_size: U32, channels: U32 }
 
-extern "C" type Sound = { stream: AudioStream, frame_count: U32 }
+extern "C" pub type Sound = { stream: AudioStream, frame_count: U32 }
 
 # `looping` is a C `bool` (1 byte) but we widen it to I32 so the
 # field layout matches raylib's — the compiler pads it to 4 bytes
 # either way, and a fixed-width word keeps the by-value copy exact.
-extern "C" type Music = { stream: AudioStream, frame_count: U32, looping: I32, ctx_type: I32, ctx_data: I64 }
+extern "C" pub type Music = { stream: AudioStream, frame_count: U32, looping: I32, ctx_type: I32, ctx_data: I64 }
 
 #[doc("Packs a 0xRRGGBBAA integer literal into a `Color`, so call sites can keep writing colors as hex.")]
 pub fn rgba(p: Int) : Color =
@@ -739,13 +739,7 @@ extern "C"("UnloadMusicStream") pub fn unload_music(
 
 #[doc("Returns `music` set to loop, or not, when it reaches the end; raylib reads the flag from the struct on each update.")]
 pub fn set_music_looping(music: Music, on: Bool) : Music =
-  Music {
-    stream: music.stream,
-    frame_count: music.frame_count,
-    looping: if on { 1 } else { 0 },
-    ctx_type: music.ctx_type,
-    ctx_data: music.ctx_data
-  }
+  Music { ...music, looping: if on { 1 } else { 0 } }
 
 # ----- colour helpers (Color by value) -----
 #
