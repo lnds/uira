@@ -2,6 +2,11 @@
 
 ## native backend corrupts a persistent Array of a String-payload sum type
 
+**Status: fixed upstream.** Reproduced on kaikai 0.98.0; the repro runs
+clean on 0.125.0 (all three frames identical on both backends). Kept
+here as a regression witness — the section below describes the failure
+as it was.
+
 **Version:** kaikai 0.98.0 (hanga-roa, stage 2), arm64 Darwin.
 **Repro:** [`repro_native_rc_sumtype.kai`](repro_native_rc_sumtype.kai) —
 46 lines, pure kaikai, no FFI.
@@ -33,13 +38,15 @@ downstream symptom: the `Real` pulled out of the now-garbage `Body`
 no longer carries its type tag.
 
 **Where it bit us:** `solar.kai` reads its persistent `Array[Body]`
-every frame and panicked on the second frame. Rebuilding the array
-each frame avoids it. Left unfixed in the demo pending an upstream
-fix, so the demo keeps exercising the real path.
+every frame and panicked on the second frame. The demo was never
+worked around — it keeps reading the array it builds once — so it now
+runs on the native backend as written.
 
 ## native backend: FFI name collides with a same-named local function
 
-**Version:** kaikai 0.98.0, arm64 Darwin.
+**Status: still open.** Reproduces unchanged on 0.125.0.
+
+**Version:** kaikai 0.98.0, arm64 Darwin; re-checked on 0.125.0.
 **Repro:** [`ffi_name_collision/`](ffi_name_collision/) — two modules.
 
 When one module binds a C function under a bare name (e.g. `clamp`) and
