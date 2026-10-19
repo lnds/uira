@@ -96,10 +96,10 @@ fn loop() : Unit / Ffi {
 }
 ```
 
-Build it the same way as the demos — see the `Makefile` for the
-exact incantation. The short version: pipe the `gen_tone` shim and
-`pkg-config --cflags --libs raylib` through `CFLAGS`, and let
-`kai build` do the rest. The demos
+Build it with `kai build`: uira's `kai.toml` declares the `gen_tone`
+shim and the raylib `pkg-config` entry in its `[native]` table, so
+the compiler compiles the shim and links raylib on its own, in this
+repo and in any package that depends on uira. The demos
 `import loop` for `repeat` / `until` / `while` / `forever`.
 
 ## Binding reference
@@ -265,8 +265,8 @@ The build pipeline:
 *.kai  --kaic2 (native backend)-->  binary
                                        ^
                                        |
-                  ffi/raylib_audio.c (gen_tone, linked via CFLAGS)
-                  libraylib          (linked via CFLAGS)
+                  ffi/raylib_audio.c (gen_tone, kai.toml [native] sources)
+                  libraylib          (kai.toml [native] pkg-config)
 ```
 
 Each binding ([`ffi/raylib.kai`](ffi/raylib.kai)) is an
