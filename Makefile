@@ -4,7 +4,7 @@
 # C shims through CFLAGS. A cc-only checkout falls back to the
 # C-text backend on its own.
 #
-# Defaults to the `kai` on $PATH (kaikai 0.98+). Override to point
+# Defaults to the `kai` on $PATH (kaikai 0.165+). Override to point
 # at a sibling kaikai checkout: `make KAI_BIN=../kaikai/bin/kai`.
 
 KAI_BIN ?= kai

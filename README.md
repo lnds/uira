@@ -52,7 +52,7 @@ uira/
 - `cc` (clang or gcc) with C99.
 - `pkg-config`.
 - raylib 5.x. On macOS: `brew install raylib`.
-- kaikai 0.98+ (see <https://kaikai-lang.org/> for install).
+- kaikai 0.165+ (see <https://kaikai-lang.org/> for install).
   The Makefile picks up whatever `kai` is on `$PATH`; override to
   point at a sibling checkout with `make KAI_BIN=../kaikai/bin/kai`.
   The build uses kaikai's default native backend, which marshals
@@ -62,7 +62,7 @@ uira/
 ## Build & run
 
 ```sh
-make                  # all 10 demos -> ./build/
+make                  # all 11 demos -> ./build/
 make conway           # one at a time
 make run-snake        # build and run
 make run-audiopad     # the audio demo
