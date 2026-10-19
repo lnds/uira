@@ -11,16 +11,16 @@
 #                          Pure functions over the body buffer.
 #   2. ===== STATE =====   the body ring buffer, apple position,
 #                          score / game-over flags. All in
-#                          Ref[Int] cells (state crosses function
+#                          Ref cells (state crosses function
 #                          boundaries). Reset, step, and input
 #                          buffering live here.
 #   3. ===== VIEW  =====   raylib rendering. Reads body / apple
 #                          / hud state; never mutates.
 #
 # Controls:
-#   arrows   girar
-#   R        reiniciar
-#   ESC      salir
+#   arrows   turn
+#   R        restart
+#   ESC      quit
 
 import ffi.raylib
 import ffi.keys
@@ -39,76 +39,44 @@ const cols : Int = 32
 
 const rows : Int = 24
 
-const grid_len : Int = 768  # cols * rows
+# The body can at most fill the whole grid.
+const max_body : Int = cols * rows
 
-const max_body : Int = 768
+type Dir = Right | Down | Left | Up
 
-# Directions encoded as small ints (kept primitive so the body
-# buffer stays Array[Int] without a custom variant).
-const dir_right : Int = 0
-
-const dir_down : Int = 1
-
-const dir_left : Int = 2
-
-const dir_up : Int = 3
-
-fn dx_of(d: Int) : Int {
-  if d == dir_right {
-    1
-  } else if d == dir_left {
-    0 - 1
-  } else {
-    0
-  }
+fn dx_of(d: Dir) : Int {
+  case Right -> 1
+  case Left -> -1
+  case _ -> 0
 }
 
-fn dy_of(d: Int) : Int {
-  if d == dir_down {
-    1
-  } else if d == dir_up {
-    0 - 1
-  } else {
-    0
-  }
+fn dy_of(d: Dir) : Int {
+  case Down -> 1
+  case Up -> -1
+  case _ -> 0
 }
 
 # A turn is legal if it isn't a 180° flip on the current heading.
 # We compare the *current* direction (already committed) against
 # the requested one — so if the player double-taps in the same
 # step, the second tap is correctly rejected.
-fn legal_turn(current: Int, requested: Int) : Bool =
-  if requested == dir_left {
-    current != dir_right
-  } else if requested == dir_right {
-    current != dir_left
-  } else if requested == dir_up {
-    current != dir_down
-  } else if requested == dir_down {
-    current != dir_up
-  } else {
-    false
-  }
+fn legal_turn(current: Dir, requested: Dir) : Bool {
+  case Right, Left -> false
+  case Left, Right -> false
+  case Down, Up -> false
+  case Up, Down -> false
+  case _, _ -> true
+}
 
-# Walk the body ring from `start_idx` to `end_idx` (inclusive)
-# and return true if any cell holds (x, y).
+# Walk the body ring from `i` to `end_idx` (inclusive) and
+# return true if any cell holds (x, y).
 fn cell_in_body_range(
   body_x: Array[Int],
   body_y: Array[Int],
-  start_idx: Int,
+  i: Int,
   end_idx: Int,
   x: Int,
   y: Int
-) : Bool =
-  cell_in_body_range_loop(body_x, body_y, end_idx, x, y, start_idx)
-
-fn cell_in_body_range_loop(
-  body_x: Array[Int],
-  body_y: Array[Int],
-  end_idx: Int,
-  x: Int,
-  y: Int,
-  i: Int
 ) : Bool {
   if body_x[i] == x and body_y[i] == y {
     true
@@ -116,7 +84,7 @@ fn cell_in_body_range_loop(
     false
   } else {
     let next = (i + 1) % max_body
-    cell_in_body_range_loop(body_x, body_y, end_idx, x, y, next)
+    cell_in_body_range(body_x, body_y, next, end_idx, x, y)
   }
 }
 
@@ -143,8 +111,8 @@ fn in_bounds(x: Int, y: Int) : Bool =
 #  + 1. Growing on apple-eat is "advance head, don't advance tail";
 #  every other step advances both.
 #
-#  All scalar state crosses function boundaries through Ref[Int]
-#  cells (per kaikai's `Mutable` discipline since #265).
+#  All scalar state crosses function boundaries through Ref
+#  cells (kaikai's `Mutable` discipline).
 # ============================================================
 
 # ----- random apple placement -----
@@ -178,12 +146,12 @@ fn reset(
   body_y: Array[Int],
   head_idx: Ref[Int],
   tail_idx: Ref[Int],
-  direction: Ref[Int],
-  pending_dir: Ref[Int],
+  direction: Ref[Dir],
+  pending_dir: Ref[Dir],
   apple_x: Ref[Int],
   apple_y: Ref[Int],
   score: Ref[Int],
-  game_over: Ref[Int]
+  game_over: Ref[Bool]
 ) : Unit / Ffi + Mutable {
   body_x[0] := 14
   body_y[0] := 12
@@ -193,10 +161,10 @@ fn reset(
   body_y[2] := 12
   tail_idx := 0
   head_idx := 2
-  direction := dir_right
-  pending_dir := dir_right
+  direction := Right
+  pending_dir := Right
   score := 0
-  game_over := 0
+  game_over := false
   place_apple(
     body_x,
     body_y,
@@ -212,12 +180,12 @@ fn reset(
 # Buffer the next direction; only commit it on the step boundary
 # so a fast double-tap can't reverse the snake into itself. The
 # legality check (legal_turn) lives in MODEL.
-fn read_input(direction: Ref[Int], pending_dir: Ref[Int]) : Unit / Ffi + Mutable {
+fn read_input(direction: Ref[Dir], pending_dir: Ref[Dir]) : Unit / Ffi + Mutable {
   let cur = @direction
-  if raylib.is_key_pressed(key_left) and legal_turn(cur, dir_left) { pending_dir := dir_left }
-  if raylib.is_key_pressed(key_right) and legal_turn(cur, dir_right) { pending_dir := dir_right }
-  if raylib.is_key_pressed(key_up) and legal_turn(cur, dir_up) { pending_dir := dir_up }
-  if raylib.is_key_pressed(key_down) and legal_turn(cur, dir_down) { pending_dir := dir_down }
+  if raylib.is_key_pressed(key_left) and legal_turn(cur, Left) { pending_dir := Left }
+  if raylib.is_key_pressed(key_right) and legal_turn(cur, Right) { pending_dir := Right }
+  if raylib.is_key_pressed(key_up) and legal_turn(cur, Up) { pending_dir := Up }
+  if raylib.is_key_pressed(key_down) and legal_turn(cur, Down) { pending_dir := Down }
 }
 
 # ----- step -----
@@ -234,12 +202,12 @@ fn step(
   body_y: Array[Int],
   head_idx: Ref[Int],
   tail_idx: Ref[Int],
-  direction: Ref[Int],
-  pending_dir: Ref[Int],
+  direction: Ref[Dir],
+  pending_dir: Ref[Dir],
   apple_x: Ref[Int],
   apple_y: Ref[Int],
   score: Ref[Int],
-  game_over: Ref[Int]
+  game_over: Ref[Bool]
 ) : Unit / Ffi + Mutable {
   direction := @pending_dir
   let dir = @direction
@@ -248,7 +216,7 @@ fn step(
   let hy = body_y[head] + dy_of(dir)
 
   if not in_bounds(hx, hy) {
-    game_over := 1
+    game_over := true
   } else {
     let ate = hx == (@apple_x) and hy == (@apple_y)
 
@@ -259,7 +227,7 @@ fn step(
     let effective_tail = if ate { tail } else { (tail + 1) % max_body }
 
     if cell_in_body_range(body_x, body_y, effective_tail, head, hx, hy) {
-      game_over := 1
+      game_over := true
     } else {
       let new_head = (head + 1) % max_body
       body_x[new_head] := hx
@@ -327,13 +295,13 @@ fn draw_snake(
   head_idx: Int,
   tail_idx: Int
 ) : Unit / Ffi =
-  draw_snake_loop(body_x, body_y, head_idx, tail_idx, tail_idx)
+  draw_snake_loop(body_x, body_y, head_idx, tail_idx)
 
+# Draw ring cells from `i` up to and including the head.
 fn draw_snake_loop(
   body_x: Array[Int],
   body_y: Array[Int],
   head_idx: Int,
-  tail_idx: Int,
   i: Int
 ) : Unit / Ffi {
   let x = body_x[i]
@@ -346,11 +314,8 @@ fn draw_snake_loop(
     cell_size - 2,
     col
   )
-  if i == head_idx {
-    ()
-  } else {
-    let next = (i + 1) % max_body
-    draw_snake_loop(body_x, body_y, head_idx, tail_idx, next)
+  if i != head_idx {
+    draw_snake_loop(body_x, body_y, head_idx, (i + 1) % max_body)
   }
 }
 
@@ -395,12 +360,12 @@ fn frame_loop(
   body_y: Array[Int],
   head_idx: Ref[Int],
   tail_idx: Ref[Int],
-  direction: Ref[Int],
-  pending_dir: Ref[Int],
+  direction: Ref[Dir],
+  pending_dir: Ref[Dir],
   apple_x: Ref[Int],
   apple_y: Ref[Int],
   score: Ref[Int],
-  game_over: Ref[Int]
+  game_over: Ref[Bool]
 ) : Unit / Ffi + Mutable {
   var frame := 0
 
@@ -422,7 +387,7 @@ fn frame_loop(
     }
 
     # ---- STATE: tick the simulation ----
-    if (@game_over) == 0 {
+    if not (@game_over) {
       read_input(direction, pending_dir)
       if frame % step_every == 0 {
         step(
@@ -451,7 +416,7 @@ fn frame_loop(
       @head_idx,
       @tail_idx
     )
-    draw_hud(@score, (@game_over) != 0)
+    draw_hud(@score, @game_over)
     raylib.end_drawing()
 
     frame := frame + 1
@@ -465,12 +430,12 @@ fn main() : Unit / Ffi + Mutable {
   let body_y = array_make(max_body, 0)
   let head_idx = Mutable.ref_make(0)
   let tail_idx = Mutable.ref_make(0)
-  let direction = Mutable.ref_make(dir_right)
-  let pending_dir = Mutable.ref_make(dir_right)
+  let direction = Mutable.ref_make(Right)
+  let pending_dir = Mutable.ref_make(Right)
   let apple_x = Mutable.ref_make(8)
   let apple_y = Mutable.ref_make(12)
   let score = Mutable.ref_make(0)
-  let game_over = Mutable.ref_make(0)
+  let game_over = Mutable.ref_make(false)
 
   raylib.init_window(800, 600, "Snake / kaikai + raylib")
   raylib.set_target_fps(60)

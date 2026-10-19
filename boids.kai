@@ -19,9 +19,9 @@
 #                          rotated to match its velocity heading.
 #
 # Controls:
-#   SPACE   pausa / reanudar
+#   SPACE   pause / resume
 #   R       randomize positions
-#   ESC     salir
+#   ESC     quit
 
 import ffi.raylib
 import ffi.keys
@@ -241,8 +241,8 @@ fn randomize(
   repeat(count) {
     xs[i] := int_to_real(raylib.get_random_value(0, 800))
     ys[i] := int_to_real(raylib.get_random_value(0, 600))
-    vxs[i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
-    vys[i] := int_to_real(raylib.get_random_value(0 - 100, 100)) / 50.0
+    vxs[i] := int_to_real(raylib.get_random_value(-100, 100)) / 50.0
+    vys[i] := int_to_real(raylib.get_random_value(-100, 100)) / 50.0
     i := i + 1
   }
 }
@@ -333,7 +333,7 @@ const col_boid : Color = rgba(0xfdf9b9FF)
 
 const col_text : Color = rgba(0xfdf9b9FF)
 
-fn boid_size() : Real = 7.0
+const boid_size : Real = 7.0
 
 fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
   let speed_sq = vx * vx + vy * vy
@@ -345,14 +345,14 @@ fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
     }
   let ct = raylib.cos(theta)
   let st = raylib.sin(theta)
-  let sz = boid_size()
+  let sz = boid_size
 
   # Local triangle: tip at (sz, 0), tail corners at (-sz/2, ±sz/2).
   let tip_lx = sz
   let tip_ly = 0.0
-  let l_lx = 0.0 - sz * 0.5
-  let l_ly = 0.0 - sz * 0.6
-  let r_lx = 0.0 - sz * 0.5
+  let l_lx = (-sz) * 0.5
+  let l_ly = (-sz) * 0.6
+  let r_lx = (-sz) * 0.5
   let r_ly = sz * 0.6
 
   let tip_wx = ct * tip_lx - st * tip_ly + x

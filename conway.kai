@@ -15,10 +15,10 @@
 #                          current grid; never mutates.
 #
 # Controls:
-#   SPACE   pausa / reanudar
-#   R       reset al patrón inicial
-#   C       limpiar la grilla
-#   ESC     salir
+#   SPACE   pause / resume
+#   R       reset to the initial pattern
+#   C       clear the grid
+#   ESC     quit
 
 import ffi.raylib
 import ffi.keys
@@ -38,7 +38,7 @@ const cols : Int = 80
 
 const rows : Int = 60
 
-const grid_len : Int = 4800  # cols * rows
+const grid_len : Int = cols * rows
 
 # Linear index from 2D coords. The grid is row-major.
 fn idx(c: Int, r: Int) : Int = r * cols + c
@@ -75,12 +75,11 @@ fn neighbours(g: Array[Bool], c: Int, r: Int) : Int =
 # The Life rule itself: given a cell's current state and its
 # alive-neighbour count, what's its next state? This is the only
 # place B3/S23 lives in code; everything else is just plumbing.
-fn next_state(alive: Bool, n: Int) : Bool =
-  if alive {
-    if n == 2 { true } else if n == 3 { true } else { false }
-  } else {
-    if n == 3 { true } else { false }
-  }
+fn next_state(alive: Bool, n: Int) : Bool {
+  case true, 2 -> true
+  case _, 3 -> true
+  case _, _ -> false
+}
 
 # Compute the next generation into `dst` from `src`. Mutates
 # `dst` (passed in by the caller); reads `src`.
@@ -120,24 +119,10 @@ fn set_alive(g: Array[Bool], c: Int, r: Int) : Unit / Mutable {
   }
 }
 
-# Stamp a pattern given as parallel offset lists `(dcs[i],
-# drs[i])` anchored at `(c0, r0)`. Parallel lists avoid Pair (we
-# stay portable across stdlib variants).
-fn stamp(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit / Mutable =
-  stamp_loop(g, c0, r0, dcs, drs)
-
-fn stamp_loop(g: Array[Bool], c0: Int, r0: Int, dcs: [Int], drs: [Int]) : Unit / Mutable {
-  match dcs {
-    [] -> ()
-    [dc, ...rest_c] -> match drs {
-      [] -> ()
-      [dr, ...rest_r] -> {
-        set_alive(g, c0 + dc, r0 + dr)
-        stamp_loop(g, c0, r0, rest_c, rest_r)
-      }
-    }
-  }
-}
+# Stamp a pattern given as `(dc, dr)` offsets anchored at
+# `(c0, r0)`.
+fn stamp(g: Array[Bool], c0: Int, r0: Int, cells: [(Int, Int)]) : Unit / Mutable =
+  cells |! set_alive(g, c0 + .fst, r0 + .snd)
 
 # Seed a small zoo of recognisable patterns: two gliders flying
 # down-right, an r-pentomino (chaotic for ~1100 generations),
@@ -146,45 +131,26 @@ fn seed(g: Array[Bool]) : Unit / Mutable {
   clear_grid(g)
 
   # Glider, top-left, heading down-right.
-  stamp(
-    g,
-    2,
-    2,
-    [1, 2, 0, 1, 2],
-    [0, 1, 2, 2, 2]
-  )
+  stamp(g, 2, 2, [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)])
 
   # Another glider, mid-top.
-  stamp(
-    g,
-    40,
-    4,
-    [1, 2, 0, 1, 2],
-    [0, 1, 2, 2, 2]
-  )
+  stamp(g, 40, 4, [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)])
 
   # R-pentomino — chaotic for ~1100 generations.
-  stamp(
-    g,
-    38,
-    30,
-    [1, 2, 0, 1, 1],
-    [0, 0, 1, 1, 2]
-  )
+  stamp(g, 38, 30, [(1, 0), (2, 0), (0, 1), (1, 1), (1, 2)])
 
   # Horizontal blinker.
-  stamp(g, 10, 50, [0, 1, 2], [0, 0, 0])
+  stamp(g, 10, 50, [(0, 0), (1, 0), (2, 0)])
 
   # Vertical blinker.
-  stamp(g, 70, 12, [0, 0, 0], [0, 1, 2])
+  stamp(g, 70, 12, [(0, 0), (0, 1), (0, 2)])
 
   # Lightweight spaceship (LWSS).
   stamp(
     g,
     5,
     35,
-    [1, 2, 3, 4, 0, 4, 4, 0, 3],
-    [0, 0, 0, 0, 1, 1, 2, 3, 3]
+    [(1, 0), (2, 0), (3, 0), (4, 0), (0, 1), (4, 1), (4, 2), (0, 3), (3, 3)]
   )
 }
 

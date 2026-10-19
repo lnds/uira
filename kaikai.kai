@@ -1,38 +1,39 @@
 # Kaikai rapanui — kaikai + raylib showcase
 #
-# Simula el juego rapanui del kaikai (figuras hechas con un cordel
-# cerrado entre los dedos). Cada "figura" es un polígono cerrado de
-# N=12 vértices en coordenadas locales; la animación interpola
-# linealmente vértice a vértice entre la figura actual y la
-# siguiente con un easing smoothstep, y aplica una rotación global
-# lenta para sugerir las manos girando el hilo.
+# Simulates the Rapa Nui string game kaikai (figures made with a
+# closed loop of cord held between the fingers). Each "figure" is a
+# closed polygon of N=12 vertices in local coordinates; the
+# animation linearly interpolates vertex by vertex between the
+# current figure and the next one with smoothstep easing, and
+# applies a slow global rotation to suggest hands turning the cord.
 #
-# Tres capas:
+# Three layers:
 #
 #   1. ===== MODEL =====   library of figures + interpolation:
 #                          each figure is an Array[Real] of 2*verts
 #                          coords; smoothstep easing; blend(a, b, t).
 #                          Pure code, plus the figure constructors
 #                          that allocate-and-fill an Array.
-#   2. ===== STATE =====   the per-frame phase / index cells
-#                          (Ref[Real] / Ref[Int]) that the morph
-#                          clock walks; select_figs picks the
+#   2. ===== STATE =====   the continuous phase clock the morph
+#                          walks; select_figs decodes the
 #                          (a_idx, b_idx, t) for the current frame.
 #   3. ===== VIEW  =====   raylib rendering: draw the polygon as
 #                          edges + finger circles, draw the HUD.
 #                          Reads the precomputed point buffer; never
 #                          mutates state.
 #
-# Controles:
-#   SPACE  pausa / reanuda
-#   →      adelantar figura
-#   ←      retroceder figura
-#   R      reiniciar
-#   ESC    salir
+# Controls:
+#   SPACE  pause / resume
+#   →      next figure
+#   ←      previous figure
+#   R      restart
+#   ESC    quit
 
 import ffi.raylib
 import ffi.keys
 import loop
+import array
+import math.real
 
 # ============================================================
 #  1. ===== MODEL ===============================================
@@ -43,7 +44,7 @@ import loop
 #  it numbers, get an Array[Real] back.
 # ============================================================
 
-const verts : Int = 12  # vértices por figura
+const verts : Int = 12  # vertices per figure
 
 const n_figs : Int = 5
 
@@ -56,7 +57,7 @@ fn set_vertex(f: Array[Real], i: Int, x: Real, y: Real) : Unit / Mutable {
   f[i * 2 + 1] := y
 }
 
-# Kona: el cordel relajado, círculo regular.
+# Kona: the relaxed cord, a regular circle.
 fn fig_kona() : Array[Real] / Ffi + Mutable {
   let f = array_make(verts * 2, 0.0)
   var i := 0
@@ -69,61 +70,61 @@ fn fig_kona() : Array[Real] / Ffi + Mutable {
   f
 }
 
-# Honu (tortuga): caparazón hexagonal con cabeza, cola y aletas.
+# Honu (turtle): hexagonal shell with head, tail and flippers.
 fn fig_honu() : Array[Real] / Mutable {
   let f = array_make(verts * 2, 0.0)
-  set_vertex(f, 0, 0.00, 0.0 - 0.95)
-  set_vertex(f, 1, 0.55, 0.0 - 0.55)
-  set_vertex(f, 2, 0.95, 0.0 - 0.30)
+  set_vertex(f, 0, 0.00, -0.95)
+  set_vertex(f, 1, 0.55, -0.55)
+  set_vertex(f, 2, 0.95, -0.30)
   set_vertex(f, 3, 0.70, 0.00)
   set_vertex(f, 4, 0.95, 0.45)
   set_vertex(f, 5, 0.55, 0.55)
   set_vertex(f, 6, 0.00, 0.95)
-  set_vertex(f, 7, 0.0 - 0.55, 0.55)
-  set_vertex(f, 8, 0.0 - 0.95, 0.45)
-  set_vertex(f, 9, 0.0 - 0.70, 0.00)
-  set_vertex(f, 10, 0.0 - 0.95, 0.0 - 0.30)
-  set_vertex(f, 11, 0.0 - 0.55, 0.0 - 0.55)
+  set_vertex(f, 7, -0.55, 0.55)
+  set_vertex(f, 8, -0.95, 0.45)
+  set_vertex(f, 9, -0.70, 0.00)
+  set_vertex(f, 10, -0.95, -0.30)
+  set_vertex(f, 11, -0.55, -0.55)
   f
 }
 
-# Vaka (canoa): silueta alargada, proa abajo y popa arriba.
+# Vaka (canoe): elongated silhouette, bow down and stern up.
 fn fig_vaka() : Array[Real] / Mutable {
   let f = array_make(verts * 2, 0.0)
-  set_vertex(f, 0, 0.00, 0.0 - 1.10)
-  set_vertex(f, 1, 0.30, 0.0 - 0.55)
-  set_vertex(f, 2, 0.45, 0.0 - 0.10)
+  set_vertex(f, 0, 0.00, -1.10)
+  set_vertex(f, 1, 0.30, -0.55)
+  set_vertex(f, 2, 0.45, -0.10)
   set_vertex(f, 3, 0.85, 0.00)
   set_vertex(f, 4, 0.45, 0.10)
   set_vertex(f, 5, 0.30, 0.55)
   set_vertex(f, 6, 0.00, 1.10)
-  set_vertex(f, 7, 0.0 - 0.30, 0.55)
-  set_vertex(f, 8, 0.0 - 0.45, 0.10)
-  set_vertex(f, 9, 0.0 - 0.85, 0.00)
-  set_vertex(f, 10, 0.0 - 0.45, 0.0 - 0.10)
-  set_vertex(f, 11, 0.0 - 0.30, 0.0 - 0.55)
+  set_vertex(f, 7, -0.30, 0.55)
+  set_vertex(f, 8, -0.45, 0.10)
+  set_vertex(f, 9, -0.85, 0.00)
+  set_vertex(f, 10, -0.45, -0.10)
+  set_vertex(f, 11, -0.30, -0.55)
   f
 }
 
-# Moai: cabeza grande arriba, hombros marcados.
+# Moai: large head on top, pronounced shoulders.
 fn fig_moai() : Array[Real] / Mutable {
   let f = array_make(verts * 2, 0.0)
-  set_vertex(f, 0, 0.00, 0.0 - 1.00)
-  set_vertex(f, 1, 0.45, 0.0 - 0.85)
-  set_vertex(f, 2, 0.55, 0.0 - 0.45)
-  set_vertex(f, 3, 0.45, 0.0 - 0.10)
-  set_vertex(f, 4, 0.85, 0.0 - 0.05)
+  set_vertex(f, 0, 0.00, -1.00)
+  set_vertex(f, 1, 0.45, -0.85)
+  set_vertex(f, 2, 0.55, -0.45)
+  set_vertex(f, 3, 0.45, -0.10)
+  set_vertex(f, 4, 0.85, -0.05)
   set_vertex(f, 5, 0.75, 0.95)
   set_vertex(f, 6, 0.00, 1.00)
-  set_vertex(f, 7, 0.0 - 0.75, 0.95)
-  set_vertex(f, 8, 0.0 - 0.85, 0.0 - 0.05)
-  set_vertex(f, 9, 0.0 - 0.45, 0.0 - 0.10)
-  set_vertex(f, 10, 0.0 - 0.55, 0.0 - 0.45)
-  set_vertex(f, 11, 0.0 - 0.45, 0.0 - 0.85)
+  set_vertex(f, 7, -0.75, 0.95)
+  set_vertex(f, 8, -0.85, -0.05)
+  set_vertex(f, 9, -0.45, -0.10)
+  set_vertex(f, 10, -0.55, -0.45)
+  set_vertex(f, 11, -0.45, -0.85)
   f
 }
 
-# Rapa: figura estrellada de 6 puntas (alternando radios).
+# Rapa: six-pointed star (alternating radii).
 fn fig_rapa() : Array[Real] / Ffi + Mutable {
   let f = array_make(verts * 2, 0.0)
   var i := 0
@@ -138,36 +139,23 @@ fn fig_rapa() : Array[Real] / Ffi + Mutable {
 }
 
 fn figure_name(i: Int) : String {
-  if i == 0 {
-    "kona  (el cordel)"
-  } else if i == 1 {
-    "honu  (la tortuga)"
-  } else if i == 2 {
-    "vaka  (la canoa)"
-  } else if i == 3 {
-    "moai  (la estatua)"
-  } else {
-    "rapa  (la estrella)"
-  }
+  case 0 -> "kona  (el cordel)"
+  case 1 -> "honu  (la tortuga)"
+  case 2 -> "vaka  (la canoa)"
+  case 3 -> "moai  (la estatua)"
+  case _ -> "rapa  (la estrella)"
 }
 
 # ----- easing -----
 #
-# Smoothstep en [0,1]. Suaviza el inicio y fin del morphing para
-# que parezca una mano que tira del hilo, no un teletransporte.
+# Smoothstep on [0,1]. Eases the start and end of the morph so it
+# looks like a hand pulling the cord, not a teleport.
 fn smoothstep(t: Real) : Real {
   let tt = if t < 0.0 { 0.0 } else if t > 1.0 { 1.0 } else { t }
   tt * tt * (3.0 - 2.0 * tt)
 }
 
-# Floor para reales ≥ 0 (caso aquí): trunca y listo.
-fn real_floor(x: Real) : Real {
-  let i = real_to_int(x)
-  let f = int_to_real(i)
-  if f > x { f - 1.0 } else { f }
-}
-
-# Mezcla figuras a y b en `out` según factor t en [0,1].
+# Blend figures a and b into `out` by factor t in [0,1].
 fn blend(
   a: Array[Real],
   b: Array[Real],
@@ -184,37 +172,32 @@ fn blend(
 # ============================================================
 #  2. ===== STATE ===============================================
 #
-#  The per-frame phase clock and the index/blend cells. The phase
-#  is a continuous Real that walks `[0, n_figs)` mod n_figs as
-#  time advances; each integer step is a figure transition.
-#  `select_figs` decodes the current (a_idx, b_idx, t) from the
-#  phase and writes them into the output Refs + the blended
-#  point buffer.
+#  The phase clock is a continuous Real that walks `[0, n_figs)`
+#  mod n_figs as time advances; each integer step is a figure
+#  transition. `select_figs` decodes the current (a_idx, b_idx, t)
+#  from the phase and writes the blended point buffer.
 # ============================================================
 
-const morph_secs : Real = 2.5  # tiempo de transición entre figuras
+const morph_secs : Real = 2.5  # transition time between figures
 
-const hold_secs : Real = 1.2  # tiempo de pausa en cada figura
+const hold_secs : Real = 1.2  # hold time on each figure
 
-const spin_rate : Real = 0.35  # radianes/seg de rotación global
+const spin_rate : Real = 0.35  # global rotation, radians per second
 
-# Resolve the current (a_idx, b_idx, t) from the phase clock and
-# blend the two figures into `out`. The first `hold_frac` of each
-# cycle is a static hold; the rest is a smoothstep morph toward
-# the next figure.
+# Resolve the current (a_idx, b_idx, t) from the phase clock,
+# blend the two figures into `out`, and return the triple. The
+# first `hold_frac` of each cycle is a static hold; the rest is a
+# smoothstep morph toward the next figure.
 fn select_figs(
   phase: Real,
   figs: Array[Array[Real]],
-  out_t: Ref[Real],
-  out_a_idx: Ref[Int],
-  out_b_idx: Ref[Int],
   out: Array[Real]
-) : Unit / Mutable {
+) : (Int, Int, Real) / Mutable {
   let cycle = morph_secs + hold_secs
   let hold_frac = hold_secs / cycle
 
-  let p = phase - real_floor(phase / int_to_real(n_figs)) * int_to_real(n_figs)
-  let a_idx = real_to_int(real_floor(p))
+  let p = phase - real.floor(phase / int_to_real(n_figs)) * int_to_real(n_figs)
+  let a_idx = real_to_int(real.floor(p))
   let b_idx = (a_idx + 1) % n_figs
   let local = p - int_to_real(a_idx)  # [0,1)
 
@@ -226,10 +209,8 @@ fn select_figs(
     }
   let t = smoothstep(t_raw)
 
-  out_t := t
-  out_a_idx := a_idx
-  out_b_idx := b_idx
   blend(figs[a_idx], figs[b_idx], t, out)
+  (a_idx, b_idx, t)
 }
 
 # ============================================================
@@ -262,41 +243,25 @@ const col_text : Color = rgba(0xfdf9b9FF)
 const col_dim : Color = rgba(0x6b6f5cFF)
 
 # Project a local-frame (lx, ly) to world space, given the global
-# rotation (ct, st) = (cos spin, sin spin). The output cells let
-# this function double as both a "compute a single point" call
-# and a writer used by the polygon traversal.
-fn world_xy(
-  lx: Real,
-  ly: Real,
-  ct: Real,
-  st: Real,
-  ox: Array[Real],
-  oy: Array[Real]
-) : Unit / Mutable {
-  ox[0] := cx + scale * (ct * lx - st * ly)
-  oy[0] := cy + scale * (st * lx + ct * ly)
-}
+# rotation (ct, st) = (cos spin, sin spin).
+fn world_xy(lx: Real, ly: Real, ct: Real, st: Real) : (Real, Real) =
+  (cx + scale * (ct * lx - st * ly), cy + scale * (st * lx + ct * ly))
 
-fn draw_figure(pts: Array[Real], spin: Real) : Unit / Ffi + Mutable {
+fn draw_figure(pts: Array[Real], spin: Real) : Unit / Ffi {
   let ct = raylib.cos(spin)
   let st = raylib.sin(spin)
-
-  let ax = array_make(1, 0.0)
-  let ay = array_make(1, 0.0)
-  let bx = array_make(1, 0.0)
-  let by = array_make(1, 0.0)
 
   # Edges of the closed polygon.
   var i := 0
   repeat(verts) {
     let j = (i + 1) % verts
-    world_xy(pts[i * 2], pts[i * 2 + 1], ct, st, ax, ay)
-    world_xy(pts[j * 2], pts[j * 2 + 1], ct, st, bx, by)
+    let (ax, ay) = world_xy(pts[i * 2], pts[i * 2 + 1], ct, st)
+    let (bx, by) = world_xy(pts[j * 2], pts[j * 2 + 1], ct, st)
     raylib.draw_line(
-      real_to_int(ax[0]),
-      real_to_int(ay[0]),
-      real_to_int(bx[0]),
-      real_to_int(by[0]),
+      real_to_int(ax),
+      real_to_int(ay),
+      real_to_int(bx),
+      real_to_int(by),
       col_cord
     )
     i := i + 1
@@ -305,10 +270,10 @@ fn draw_figure(pts: Array[Real], spin: Real) : Unit / Ffi + Mutable {
   # "Finger" circles on each vertex.
   i := 0
   repeat(verts) {
-    world_xy(pts[i * 2], pts[i * 2 + 1], ct, st, ax, ay)
+    let (x, y) = world_xy(pts[i * 2], pts[i * 2 + 1], ct, st)
     raylib.draw_circle(
-      real_to_int(ax[0]),
-      real_to_int(ay[0]),
+      real_to_int(x),
+      real_to_int(y),
       4.0,
       col_finger
     )
@@ -350,19 +315,12 @@ fn draw_hud(a_idx: Int, b_idx: Int, t: Real, paused: Bool) : Unit / Ffi {
 # ============================================================
 #  ===== ORCHESTRATOR ===========================================
 #
-#  `phase_cell` is our continuous clock in figure-units. We
-#  advance it by dt each frame; arrows snap ±1 figure to the
-#  morph boundary.
+#  `phase` is the continuous clock in figure-units. It advances
+#  by dt each frame; arrows snap ±1 figure to the morph boundary.
 # ============================================================
 
-fn frame_loop(
-  figs: Array[Array[Real]],
-  pts: Array[Real],
-  phase_cell: Ref[Real],
-  t_cell: Ref[Real],
-  a_cell: Ref[Int],
-  b_cell: Ref[Int]
-) : Unit / Ffi + Mutable {
+fn frame_loop(figs: Array[Array[Real]], pts: Array[Real]) : Unit / Ffi + Mutable {
+  var phase := 0.0
   var paused := false
   var prev_time := raylib.get_time()
   var spin := 0.0
@@ -379,52 +337,42 @@ fn frame_loop(
       paused := not paused
     }
     if raylib.is_key_pressed(key_r) {
-      phase_cell := 0.0
+      phase := 0.0
       spin := 0.0
     }
     if raylib.is_key_pressed(key_right) {
-      phase_cell := int_to_real(real_to_int(real_floor(@phase_cell)) + 1)
+      phase := real.floor(phase) + 1.0
     }
     if raylib.is_key_pressed(key_left) {
-      let cur = real_to_int(real_floor(@phase_cell))
+      let cur = real_to_int(real.floor(phase))
       let prev = if cur == 0 { n_figs - 1 } else { cur - 1 }
-      phase_cell := int_to_real(prev)
+      phase := int_to_real(prev)
     }
 
     # ---- STATE: tick the phase clock ----
     if not paused {
-      phase_cell := (@phase_cell) + dt / cycle
+      phase := phase + dt / cycle
       spin := spin + dt * spin_rate
     }
 
     # ---- MODEL: blend the current pair of figures ----
-    select_figs(@phase_cell, figs, t_cell, a_cell, b_cell, pts)
+    let (a_idx, b_idx, t) = select_figs(phase, figs, pts)
 
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
     draw_figure(pts, spin)
-    draw_hud(@a_cell, @b_cell, @t_cell, paused)
+    draw_hud(a_idx, b_idx, t, paused)
     raylib.end_drawing()
   }
 }
 
 fn main() : Unit / Ffi + Mutable {
-  let figs = array_make(n_figs, array_make(0, 0.0))
-  figs[0] := fig_kona()
-  figs[1] := fig_honu()
-  figs[2] := fig_vaka()
-  figs[3] := fig_moai()
-  figs[4] := fig_rapa()
-
+  let figs = array.from([fig_kona(), fig_honu(), fig_vaka(), fig_moai(), fig_rapa()])
   let pts = array_make(verts * 2, 0.0)
-  let phase_cell = Mutable.ref_make(0.0)
-  let t_cell = Mutable.ref_make(0.0)
-  let a_cell = Mutable.ref_make(0)
-  let b_cell = Mutable.ref_make(0)
 
   raylib.init_window(width, height, "Kaikai rapanui / kaikai + raylib")
   raylib.set_target_fps(60)
-  frame_loop(figs, pts, phase_cell, t_cell, a_cell, b_cell)
+  frame_loop(figs, pts)
   raylib.close_window()
 }

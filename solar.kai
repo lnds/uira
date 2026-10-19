@@ -1,4 +1,4 @@
-# Sistema solar — kaikai + raylib showcase
+# Solar system — kaikai + raylib showcase
 #
 # Six bodies orbiting on circular paths: the Sun in the centre,
 # four planets at typical orbital radii, and the Moon riding
@@ -40,16 +40,18 @@
 #   - Custom effect + handler:    effect Event surfaces perihelion
 #                                 crossings; handler decides where.
 #
-# Controles:
-#   SPACE   pausa
-#   + / -   acelerar / frenar
-#   T       trazas on/off
+# Controls:
+#   SPACE   pause
+#   + / -   speed up / slow down
+#   T       trails on/off
 #   R       reset
-#   ESC     salir
+#   ESC     quit
 
 import ffi.raylib
 import ffi.keys
 import loop
+import array
+import math.real
 
 # ============================================================
 #  1. ===== MODEL ===============================================
@@ -89,17 +91,17 @@ const n_bodies : Int = 7
 
 # Inner-vs-outer planet classification — guarded match on a
 # dimensioned threshold (`d <= 1.5<au>`).
-fn class_of(b: Body) : String = match b {
-  Planet(_, d, _, _, _) if d <= 1.5<au> -> "interior"
-  Planet(_, _, _, _, _) -> "exterior"
-  Moon(_, _, _, _, _, _) -> "satélite"
-  Star(_, _, _) -> "estrella"
+fn class_of(b: Body) : String {
+  case Planet(_, d, _, _, _) when d <= 1.5<au> -> "interior"
+  case Planet(_, _, _, _, _) -> "exterior"
+  case Moon(_, _, _, _, _, _) -> "satélite"
+  case Star(_, _, _) -> "estrella"
 }
 
-fn body_label(b: Body) : String = match b {
-  Star(s, _, _) -> s
-  Planet(s, _, _, _, _) -> s
-  Moon(s, _, _, _, _, _) -> s
+fn body_label(b: Body) : String {
+  case Star(s, _, _) -> s
+  case Planet(s, _, _, _, _) -> s
+  case Moon(s, _, _, _, _, _) -> s
 }
 
 # ----- orbital position -----
@@ -129,14 +131,6 @@ fn orbit_y(dist: Real<au>, period: Real<days>, t: Real<days>, base_y: Real) : Re
   base_y + r_px * raylib.sin(bare)
 }
 
-# Floor for non-negative reals — used by the perihelion detector
-# to count cycle boundaries.
-fn floor_nonneg(x: Real) : Real {
-  let n = real_to_int(x)
-  let f = int_to_real(n)
-  if f > x { f - 1.0 } else { f }
-}
-
 # ============================================================
 #  2. ===== STATE ===============================================
 #
@@ -146,17 +140,16 @@ fn floor_nonneg(x: Real) : Real {
 #  packed as a single Array[Real] with stride 2*trail_len.
 # ============================================================
 
-fn build_bodies() : Array[Body] / Mutable {
-  let bs = array_make(n_bodies, Star("", 0, 0.0))
-  bs[0] := Star("Sol", 0xffd166FF, 18.0)
-  bs[1] := Planet("Mercurio", 0.39<au>, 88.0<days>, 0xb08968FF, 4.0)
-  bs[2] := Planet("Venus", 0.72<au>, 224.7<days>, 0xefcb68FF, 6.0)
-  bs[3] := Planet("Tierra", 1.00<au>, 365.25<days>, 0x4ea1ffFF, 6.5)
-  bs[4] := Planet("Marte", 1.52<au>, 687.0<days>, 0xff6b6bFF, 5.0)
-  bs[5] := Planet("Júpiter", 3.20<au>, 1500.0<days>, 0xfca311FF, 11.0)
-  bs[6] := Moon("Luna", 3, 0.30<au>, 27.3<days>, 0xd9d9d9FF, 2.5)
-  bs
-}
+fn build_bodies() : Array[Body] / Mutable =
+  array.from([
+    Star("Sol", 0xffd166FF, 18.0),
+    Planet("Mercurio", 0.39<au>, 88.0<days>, 0xb08968FF, 4.0),
+    Planet("Venus", 0.72<au>, 224.7<days>, 0xefcb68FF, 6.0),
+    Planet("Tierra", 1.00<au>, 365.25<days>, 0x4ea1ffFF, 6.5),
+    Planet("Marte", 1.52<au>, 687.0<days>, 0xff6b6bFF, 5.0),
+    Planet("Júpiter", 3.20<au>, 1500.0<days>, 0xfca311FF, 11.0),
+    Moon("Luna", 3, 0.30<au>, 27.3<days>, 0xd9d9d9FF, 2.5)
+  ])
 
 # Project body i to (xs[i], ys[i]) at simulation time `t`. Moons
 # read their parent's freshly-written position, so we project in
@@ -187,21 +180,11 @@ fn project_all(
   t: Real<days>,
   xs: Array[Real],
   ys: Array[Real]
-) : Unit / Ffi + Mutable =
-  project_loop(bodies, t, xs, ys, 0)
-
-fn project_loop(
-  bodies: Array[Body],
-  t: Real<days>,
-  xs: Array[Real],
-  ys: Array[Real],
-  i: Int
 ) : Unit / Ffi + Mutable {
-  if i >= n_bodies {
-    ()
-  } else {
+  var i := 0
+  repeat(n_bodies) {
     project_one(bodies[i], t, xs, ys, i)
-    project_loop(bodies, t, xs, ys, i + 1)
+    i := i + 1
   }
 }
 
@@ -213,36 +196,18 @@ fn project_loop(
 fn detect_one(b: Body, last_day: Real, day: Real) : Unit / Event = match b {
   Planet(name, _, period, _, _) -> {
     let p = period / 1.0<days>
-    if floor_nonneg(day / p) > floor_nonneg(last_day / p) {
+    if real.floor(day / p) > real.floor(last_day / p) {
       Event.perihelion(name, day)
     }
   }
-  Star(_, _, _) -> {
-    ()
-  }
-  Moon(_, _, _, _, _, _) -> {
-    ()
-  }
+  _ -> ()
 }
 
-fn detect_events(
-  bodies: Array[Body],
-  last_day: Real,
-  day: Real
-) : Unit / Event =
-  detect_loop(bodies, last_day, day, 0)
-
-fn detect_loop(
-  bodies: Array[Body],
-  last_day: Real,
-  day: Real,
-  i: Int
-) : Unit / Event {
-  if i >= n_bodies {
-    ()
-  } else {
+fn detect_events(bodies: Array[Body], last_day: Real, day: Real) : Unit / Event {
+  var i := 0
+  repeat(n_bodies) {
     detect_one(bodies[i], last_day, day)
-    detect_loop(bodies, last_day, day, i + 1)
+    i := i + 1
   }
 }
 
@@ -267,26 +232,17 @@ fn record_trail(
   heads[idx] := (h + 1) % trail_len
 }
 
+# The Sun (index 0) never moves, so it gets no trail.
 fn record_all(
   trails: Array[Real],
   heads: Array[Int],
   xs: Array[Real],
   ys: Array[Real]
-) : Unit / Mutable =
-  record_loop(trails, heads, xs, ys, 1)
-
-fn record_loop(
-  trails: Array[Real],
-  heads: Array[Int],
-  xs: Array[Real],
-  ys: Array[Real],
-  i: Int
 ) : Unit / Mutable {
-  if i >= n_bodies {
-    ()
-  } else {
+  var i := 1
+  while { i < n_bodies } {
     record_trail(trails, heads, i, xs[i], ys[i])
-    record_loop(trails, heads, xs, ys, i + 1)
+    i := i + 1
   }
 }
 
@@ -332,49 +288,40 @@ fn draw_orbit(b: Body) : Unit / Ffi = match b {
     raylib.draw_circle(real_to_int(cx), real_to_int(cy), r_px, col_orbit)
     raylib.draw_circle(real_to_int(cx), real_to_int(cy), r_px - 1.0, col_bg)
   }
-  Star(_, _, _) -> {
-    ()
-  }
-  Moon(_, _, _, _, _, _) -> {
-    ()
-  }
+  _ -> ()
 }
 
-fn draw_body(b: Body, x: Real, y: Real) : Unit / Ffi = match b {
-  Star(_, color, r) ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
-  Planet(_, _, _, color, r) ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
-  Moon(_, _, _, _, color, r) ->
-    raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
+fn draw_body(b: Body, x: Real, y: Real) : Unit / Ffi {
+  let (color, r) = match b {
+    Star(_, color, r) -> (color, r)
+    Planet(_, _, _, color, r) -> (color, r)
+    Moon(_, _, _, _, color, r) -> (color, r)
+  }
+  raylib.draw_circle(real_to_int(x), real_to_int(y), r, raylib.rgba(color))
 }
 
-fn draw_orbits(bodies: Array[Body], i: Int) : Unit / Ffi {
-  if i >= n_bodies {
-    ()
-  } else {
+fn draw_orbits(bodies: Array[Body]) : Unit / Ffi {
+  var i := 0
+  repeat(n_bodies) {
     draw_orbit(bodies[i])
-    draw_orbits(bodies, i + 1)
+    i := i + 1
   }
 }
 
-fn draw_bodies(bodies: Array[Body], xs: Array[Real], ys: Array[Real], i: Int) : Unit / Ffi {
-  if i >= n_bodies {
-    ()
-  } else {
+fn draw_bodies(bodies: Array[Body], xs: Array[Real], ys: Array[Real]) : Unit / Ffi {
+  var i := 0
+  repeat(n_bodies) {
     draw_body(bodies[i], xs[i], ys[i])
-    draw_bodies(bodies, xs, ys, i + 1)
+    i := i + 1
   }
 }
 
-fn draw_trail(trails: Array[Real], idx: Int) : Unit / Ffi =
-  trail_loop(trails, idx, 0)
-
-fn trail_loop(trails: Array[Real], idx: Int, k: Int) : Unit / Ffi {
-  if k >= trail_len - 1 {
-    ()
-  } else {
-    let base = idx * trail_len * 2
+# Join consecutive ring points of body `idx`; unset (0, 0) points
+# are skipped so a fresh trail does not draw a line from the origin.
+fn draw_trail(trails: Array[Real], idx: Int) : Unit / Ffi {
+  let base = idx * trail_len * 2
+  var k := 0
+  repeat(trail_len - 1) {
     let i1 = base + k * 2
     let i2 = base + (k + 1) * 2
     let x1 = trails[i1]
@@ -390,43 +337,38 @@ fn trail_loop(trails: Array[Real], idx: Int, k: Int) : Unit / Ffi {
         col_trail
       )
     }
-    trail_loop(trails, idx, k + 1)
+    k := k + 1
   }
 }
 
-fn draw_trails(trails: Array[Real]) : Unit / Ffi = trails_loop(trails, 1)
-
-fn trails_loop(trails: Array[Real], i: Int) : Unit / Ffi {
-  if i >= n_bodies {
-    ()
-  } else {
+fn draw_trails(trails: Array[Real]) : Unit / Ffi {
+  var i := 1
+  while { i < n_bodies } {
     draw_trail(trails, i)
-    trails_loop(trails, i + 1)
+    i := i + 1
   }
 }
 
-fn draw_sidebar(bodies: Array[Body], i: Int, row: Int) : Unit / Ffi {
-  if i >= n_bodies {
-    ()
-  } else if i == 0 {
-    draw_sidebar(bodies, i + 1, row)
-  } else {
+# One row per body, skipping the Sun at index 0.
+fn draw_sidebar(bodies: Array[Body]) : Unit / Ffi {
+  var i := 1
+  while { i < n_bodies } {
     let b = bodies[i]
-    raylib.draw_text(body_label(b), 600, 80 + row * 22, 14, col_text)
-    raylib.draw_text(class_of(b), 720, 80 + row * 22, 14, col_dim)
-    draw_sidebar(bodies, i + 1, row + 1)
+    let y = 80 + (i - 1) * 22
+    raylib.draw_text(body_label(b), 600, y, 14, col_text)
+    raylib.draw_text(class_of(b), 720, y, 14, col_dim)
+    i := i + 1
   }
 }
 
-fn draw_banner(buf: Array[String], i: Int) : Unit / Ffi {
-  if i >= banner_slots {
-    ()
-  } else {
+fn draw_banner(buf: Array[String]) : Unit / Ffi {
+  var i := 0
+  repeat(banner_slots) {
     let m = buf[i]
     if string_length(m) > 0 {
       raylib.draw_text(m, 20, 600 + i * 22, 16, col_banner)
     }
-    draw_banner(buf, i + 1)
+    i := i + 1
   }
 }
 
@@ -505,12 +447,12 @@ fn frame_loop(
     # ---- VIEW: render ----
     raylib.begin_drawing()
     raylib.clear_background(col_bg)
-    draw_orbits(bodies, 0)
+    draw_orbits(bodies)
     if trails_on { draw_trails(trails) }
-    draw_bodies(bodies, xs, ys, 0)
+    draw_bodies(bodies, xs, ys)
     draw_hud(day, speed, paused, trails_on)
-    draw_sidebar(bodies, 0, 0)
-    draw_banner(banner, 0)
+    draw_sidebar(bodies)
+    draw_banner(banner)
     raylib.end_drawing()
   }
 }
