@@ -34,18 +34,24 @@ import loop
 #  rendering).
 # ============================================================
 
-const cols     : Int = 80
-const rows     : Int = 60
-const grid_len : Int = 4800   # cols * rows
+const cols : Int = 80
+
+const rows : Int = 60
+
+const grid_len : Int = 4800  # cols * rows
 
 # Linear index from 2D coords. The grid is row-major.
 fn idx(c: Int, r: Int) : Int = r * cols + c
 
 # Wrap a coord into [0, n). Used to make the grid toroidal.
 fn wrap(v: Int, n: Int) : Int {
-  if v < 0 { v + n }
-  else if v >= n { v - n }
-  else { v }
+  if v < 0 {
+    v + n
+  } else if v >= n {
+    v - n
+  } else {
+    v
+  }
 }
 
 # Read a cell with toroidal wrap on both axes.
@@ -57,14 +63,14 @@ fn b2i(b: Bool) : Int = if b { 1 } else { 0 }
 # Count alive neighbours of (c, r). Eight reads, unrolled —
 # avoids a list allocation per cell.
 fn neighbours(g: Array[Bool], c: Int, r: Int) : Int =
-  b2i(read_at(g, c - 1, r - 1)) +
-  b2i(read_at(g, c,     r - 1)) +
-  b2i(read_at(g, c + 1, r - 1)) +
-  b2i(read_at(g, c - 1, r))     +
-  b2i(read_at(g, c + 1, r))     +
-  b2i(read_at(g, c - 1, r + 1)) +
-  b2i(read_at(g, c,     r + 1)) +
-  b2i(read_at(g, c + 1, r + 1))
+  b2i(read_at(g, c - 1, r - 1))
+    + b2i(read_at(g, c, r - 1))
+    + b2i(read_at(g, c + 1, r - 1))
+    + b2i(read_at(g, c - 1, r))
+    + b2i(read_at(g, c + 1, r))
+    + b2i(read_at(g, c - 1, r + 1))
+    + b2i(read_at(g, c, r + 1))
+    + b2i(read_at(g, c + 1, r + 1))
 
 # The Life rule itself: given a cell's current state and its
 # alive-neighbour count, what's its next state? This is the only
@@ -140,19 +146,31 @@ fn seed(g: Array[Bool]) : Unit / Mutable {
   clear_grid(g)
 
   # Glider, top-left, heading down-right.
-  stamp(g, 2, 2,
+  stamp(
+    g,
+    2,
+    2,
     [1, 2, 0, 1, 2],
-    [0, 1, 2, 2, 2])
+    [0, 1, 2, 2, 2]
+  )
 
   # Another glider, mid-top.
-  stamp(g, 40, 4,
+  stamp(
+    g,
+    40,
+    4,
     [1, 2, 0, 1, 2],
-    [0, 1, 2, 2, 2])
+    [0, 1, 2, 2, 2]
+  )
 
   # R-pentomino — chaotic for ~1100 generations.
-  stamp(g, 38, 30,
+  stamp(
+    g,
+    38,
+    30,
     [1, 2, 0, 1, 1],
-    [0, 0, 1, 1, 2])
+    [0, 0, 1, 1, 2]
+  )
 
   # Horizontal blinker.
   stamp(g, 10, 50, [0, 1, 2], [0, 0, 0])
@@ -161,9 +179,13 @@ fn seed(g: Array[Bool]) : Unit / Mutable {
   stamp(g, 70, 12, [0, 0, 0], [0, 1, 2])
 
   # Lightweight spaceship (LWSS).
-  stamp(g, 5, 35,
+  stamp(
+    g,
+    5,
+    35,
     [1, 2, 3, 4, 0, 4, 4, 0, 3],
-    [0, 0, 0, 0, 1, 1, 2, 3, 3])
+    [0, 0, 0, 0, 1, 1, 2, 3, 3]
+  )
 }
 
 # Pick the "current" / "next" buffer given the ping-pong flag.
@@ -183,9 +205,11 @@ fn other(which: Int, a: Array[Bool], b: Array[Bool]) : Array[Bool] =
 const cell_size : Int = 10
 
 # Packed RGBA: 0xRRGGBBAA.
-const col_bg    : Color = rgba(0x14141eFF)
+const col_bg : Color = rgba(0x14141eFF)
+
 const col_alive : Color = rgba(0x6cfff5FF)
-const col_text  : Color = rgba(0xfdf9b9FF)
+
+const col_text : Color = rgba(0xfdf9b9FF)
 
 fn draw_cells(g: Array[Bool]) : Unit / Ffi {
   var i := 0
@@ -193,9 +217,13 @@ fn draw_cells(g: Array[Bool]) : Unit / Ffi {
     if g[i] {
       let c = i % cols
       let r = i / cols
-      raylib.draw_rectangle(c * cell_size, r * cell_size,
-                            cell_size - 1, cell_size - 1,
-                            col_alive)
+      raylib.draw_rectangle(
+        c * cell_size,
+        r * cell_size,
+        cell_size - 1,
+        cell_size - 1,
+        col_alive
+      )
     }
     i := i + 1
   }
@@ -203,8 +231,13 @@ fn draw_cells(g: Array[Bool]) : Unit / Ffi {
 
 fn draw_hud(gen: Int, paused: Bool) : Unit / Ffi {
   raylib.draw_text("conway / kaikai + raylib", 10, 8, 14, col_text)
-  raylib.draw_text("SPACE pause   R reset   C clear   ESC quit",
-                10, 580, 14, col_text)
+  raylib.draw_text(
+    "SPACE pause   R reset   C clear   ESC quit",
+    10,
+    580,
+    14,
+    col_text
+  )
   let label = if paused { "PAUSED  gen " } else { "running gen " }
   raylib.draw_text(label, 580, 8, 14, col_text)
   raylib.draw_text(int_to_string(gen), 700, 8, 14, col_text)
@@ -218,7 +251,7 @@ fn draw_hud(gen: Int, paused: Bool) : Unit / Ffi {
 #  `gen`.
 # ============================================================
 
-const step_every : Int = 6   # 60 fps / 6 = 10 generations/sec
+const step_every : Int = 6  # 60 fps / 6 = 10 generations/sec
 
 fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi + Mutable {
   var which := 0
@@ -239,7 +272,7 @@ fn frame_loop(a: Array[Bool], b: Array[Bool]) : Unit / Ffi + Mutable {
     }
 
     # ---- MODEL: tick a generation ----
-    if (not paused) and (frame % step_every == 0) {
+    if (not paused) and frame % step_every == 0 {
       let cur = current(which, a, b)
       let nxt = other(which, a, b)
       step_into(cur, nxt)

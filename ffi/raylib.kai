@@ -17,22 +17,20 @@
 
 # ----- boundary types -----
 
-extern "C" type Color   = { r: U8, g: U8, b: U8, a: U8 }
+extern "C" type Color = { r: U8, g: U8, b: U8, a: U8 }
+
 extern "C" type Vector2 = { x: F32, y: F32 }
-extern "C" type Rect    = { x: F32, y: F32, w: F32, h: F32 }
+
+extern "C" type Rect = { x: F32, y: F32, w: F32, h: F32 }
 
 # Texture2D is all scalars (an OpenGL id + dimensions), so it crosses
 # by value with no shim.
-extern "C" type Texture2D = {
-  id: U32, width: I32, height: I32, mipmaps: I32, format: I32
-}
+extern "C" type Texture2D = { id: U32, width: I32, height: I32, mipmaps: I32, format: I32 }
 
 # Camera2D is all scalars (two Vector2 + two F32), so it crosses by
 # value. `offset` is the screen-space anchor, `target` the world point
 # under it; `zoom` scales around the target (1.0 = no zoom).
-extern "C" type Camera2D = {
-  offset: Vector2, target: Vector2, rotation: F32, zoom: F32
-}
+extern "C" type Camera2D = { offset: Vector2, target: Vector2, rotation: F32, zoom: F32 }
 
 # Font, Sound and Music embed pointers into raylib's internals
 # (glyph tables, audio buffers). They still cross by value: the
@@ -40,170 +38,288 @@ extern "C" type Camera2D = {
 # bits without dereferencing them, and raylib gets them back intact.
 # The `Real` sample buffer behind a synthesised tone is the one thing
 # kaikai can't build, so gen_tone stays in ffi/raylib_audio.c.
-extern "C" type Font = {
-  base_size: I32, glyph_count: I32, glyph_padding: I32,
-  texture: Texture2D, recs: I64, glyphs: I64,
-}
+extern "C" type Font = { base_size: I32, glyph_count: I32, glyph_padding: I32, texture: Texture2D, recs: I64, glyphs: I64 }
 
-extern "C" type AudioStream = {
-  buffer: I64, processor: I64,
-  sample_rate: U32, sample_size: U32, channels: U32,
-}
+extern "C" type AudioStream = { buffer: I64, processor: I64, sample_rate: U32, sample_size: U32, channels: U32 }
+
 extern "C" type Sound = { stream: AudioStream, frame_count: U32 }
+
 # `looping` is a C `bool` (1 byte) but we widen it to I32 so the
 # field layout matches raylib's — the compiler pads it to 4 bytes
 # either way, and a fixed-width word keeps the by-value copy exact.
-extern "C" type Music = {
-  stream: AudioStream, frame_count: U32, looping: I32,
-  ctx_type: I32, ctx_data: I64,
-}
+extern "C" type Music = { stream: AudioStream, frame_count: U32, looping: I32, ctx_type: I32, ctx_data: I64 }
 
 # Pack a 0xRRGGBBAA literal into a Color. Lets call sites keep
 # writing colors as hex while a real struct crosses the boundary.
 pub fn rgba(p: Int) : Color =
   Color {
-    r: (p / 16777216) % 256,
-    g: (p / 65536) % 256,
-    b: (p / 256) % 256,
-    a: p % 256,
+    r: p / 16777216 % 256,
+    g: p / 65536 % 256,
+    b: p / 256 % 256,
+    a: p % 256
   }
 
 # ----- window / lifecycle -----
 
-extern "C"("InitWindow")
-pub fn init_window(w: I32, h: I32, title: String) : Unit / Ffi
+extern "C"("InitWindow") pub fn init_window(
+  w: I32,
+  h: I32,
+  title: String
+) : Unit / Ffi
 
-extern "C"("CloseWindow")
-pub fn close_window() : Unit / Ffi
+extern "C"("CloseWindow") pub fn close_window() : Unit / Ffi
 
-extern "C"("WindowShouldClose")
-pub fn window_should_close() : Bool / Ffi
+extern "C"("WindowShouldClose") pub fn window_should_close() : Bool / Ffi
 
-extern "C"("SetTargetFPS")
-pub fn set_target_fps(fps: I32) : Unit / Ffi
+extern "C"("SetTargetFPS") pub fn set_target_fps(
+  fps: I32
+) : Unit / Ffi
 
-extern "C"("GetFPS")
-pub fn get_fps() : I32 / Ffi
+extern "C"("GetFPS") pub fn get_fps() : I32 / Ffi
 
-extern "C"("GetTime")
-pub fn get_time() : Real / Ffi
+extern "C"("GetTime") pub fn get_time() : Real / Ffi
 
 # ----- frame -----
 
-extern "C"("BeginDrawing")
-pub fn begin_drawing() : Unit / Ffi
+extern "C"("BeginDrawing") pub fn begin_drawing() : Unit / Ffi
 
-extern "C"("EndDrawing")
-pub fn end_drawing() : Unit / Ffi
+extern "C"("EndDrawing") pub fn end_drawing() : Unit / Ffi
 
-extern "C"("ClearBackground")
-pub fn clear_background(color: Color) : Unit / Ffi
+extern "C"("ClearBackground") pub fn clear_background(
+  color: Color
+) : Unit / Ffi
 
 # ----- shapes / text -----
 
-extern "C"("DrawRectangle")
-pub fn draw_rectangle(x: I32, y: I32, w: I32, h: I32, color: Color) : Unit / Ffi
+extern "C"("DrawRectangle") pub fn draw_rectangle(
+  x: I32,
+  y: I32,
+  w: I32,
+  h: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawPixel")
-pub fn draw_pixel(x: I32, y: I32, color: Color) : Unit / Ffi
+extern "C"("DrawPixel") pub fn draw_pixel(
+  x: I32,
+  y: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawText")
-pub fn draw_text(s: String, x: I32, y: I32, size: I32, color: Color) : Unit / Ffi
+extern "C"("DrawText") pub fn draw_text(
+  s: String,
+  x: I32,
+  y: I32,
+  size: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawTriangle")
-pub fn draw_triangle_v(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) : Unit / Ffi
+extern "C"("DrawTriangle") pub fn draw_triangle_v(
+  v1: Vector2,
+  v2: Vector2,
+  v3: Vector2,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawLine")
-pub fn draw_line(x1: I32, y1: I32, x2: I32, y2: I32, color: Color) : Unit / Ffi
+extern "C"("DrawLine") pub fn draw_line(
+  x1: I32,
+  y1: I32,
+  x2: I32,
+  y2: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawCircle")
-pub fn draw_circle(x: I32, y: I32, r: F32, color: Color) : Unit / Ffi
+extern "C"("DrawCircle") pub fn draw_circle(
+  x: I32,
+  y: I32,
+  r: F32,
+  color: Color
+) : Unit / Ffi
 
 # ----- shapes: rectangles (Vector2 / Rect by value) -----
 
-extern "C"("DrawRectangleV")
-pub fn draw_rectangle_v(position: Vector2, size: Vector2, color: Color) : Unit / Ffi
+extern "C"("DrawRectangleV") pub fn draw_rectangle_v(
+  position: Vector2,
+  size: Vector2,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleRec")
-pub fn draw_rectangle_rec(rec: Rect, color: Color) : Unit / Ffi
+extern "C"("DrawRectangleRec") pub fn draw_rectangle_rec(
+  rec: Rect,
+  color: Color
+) : Unit / Ffi
 
 # Rotated rectangle: `origin` is the pivot (relative to rec's top-left).
-extern "C"("DrawRectanglePro")
-pub fn draw_rectangle_pro(rec: Rect, origin: Vector2, rotation: F32, color: Color) : Unit / Ffi
+extern "C"("DrawRectanglePro") pub fn draw_rectangle_pro(
+  rec: Rect,
+  origin: Vector2,
+  rotation: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleLines")
-pub fn draw_rectangle_lines(x: I32, y: I32, w: I32, h: I32, color: Color) : Unit / Ffi
+extern "C"("DrawRectangleLines") pub fn draw_rectangle_lines(
+  x: I32,
+  y: I32,
+  w: I32,
+  h: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleLinesEx")
-pub fn draw_rectangle_lines_ex(rec: Rect, line_thick: F32, color: Color) : Unit / Ffi
+extern "C"("DrawRectangleLinesEx") pub fn draw_rectangle_lines_ex(
+  rec: Rect,
+  line_thick: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleRounded")
-pub fn draw_rectangle_rounded(rec: Rect, roundness: F32, segments: I32, color: Color) : Unit / Ffi
+extern "C"("DrawRectangleRounded") pub fn draw_rectangle_rounded(
+  rec: Rect,
+  roundness: F32,
+  segments: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleGradientV")
-pub fn draw_rectangle_gradient_v(x: I32, y: I32, w: I32, h: I32, top: Color, bottom: Color) : Unit / Ffi
+extern "C"("DrawRectangleGradientV") pub fn draw_rectangle_gradient_v(
+  x: I32,
+  y: I32,
+  w: I32,
+  h: I32,
+  top: Color,
+  bottom: Color
+) : Unit / Ffi
 
-extern "C"("DrawRectangleGradientH")
-pub fn draw_rectangle_gradient_h(x: I32, y: I32, w: I32, h: I32, left: Color, right: Color) : Unit / Ffi
+extern "C"("DrawRectangleGradientH") pub fn draw_rectangle_gradient_h(
+  x: I32,
+  y: I32,
+  w: I32,
+  h: I32,
+  left: Color,
+  right: Color
+) : Unit / Ffi
 
 # ----- shapes: circles / ellipses -----
 
-extern "C"("DrawCircleV")
-pub fn draw_circle_v(center: Vector2, radius: F32, color: Color) : Unit / Ffi
+extern "C"("DrawCircleV") pub fn draw_circle_v(
+  center: Vector2,
+  radius: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawCircleLines")
-pub fn draw_circle_lines(x: I32, y: I32, radius: F32, color: Color) : Unit / Ffi
+extern "C"("DrawCircleLines") pub fn draw_circle_lines(
+  x: I32,
+  y: I32,
+  radius: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawCircleGradient")
-pub fn draw_circle_gradient(x: I32, y: I32, radius: F32, inner: Color, outer: Color) : Unit / Ffi
+extern "C"("DrawCircleGradient") pub fn draw_circle_gradient(
+  x: I32,
+  y: I32,
+  radius: F32,
+  inner: Color,
+  outer: Color
+) : Unit / Ffi
 
-extern "C"("DrawCircleSector")
-pub fn draw_circle_sector(center: Vector2, radius: F32, start_angle: F32, end_angle: F32, segments: I32, color: Color) : Unit / Ffi
+extern "C"("DrawCircleSector") pub fn draw_circle_sector(
+  center: Vector2,
+  radius: F32,
+  start_angle: F32,
+  end_angle: F32,
+  segments: I32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawEllipse")
-pub fn draw_ellipse(x: I32, y: I32, radius_h: F32, radius_v: F32, color: Color) : Unit / Ffi
+extern "C"("DrawEllipse") pub fn draw_ellipse(
+  x: I32,
+  y: I32,
+  radius_h: F32,
+  radius_v: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawRing")
-pub fn draw_ring(center: Vector2, inner_radius: F32, outer_radius: F32, start_angle: F32, end_angle: F32, segments: I32, color: Color) : Unit / Ffi
+extern "C"("DrawRing") pub fn draw_ring(
+  center: Vector2,
+  inner_radius: F32,
+  outer_radius: F32,
+  start_angle: F32,
+  end_angle: F32,
+  segments: I32,
+  color: Color
+) : Unit / Ffi
 
 # ----- shapes: lines / pixels / polygons -----
 
-extern "C"("DrawPixelV")
-pub fn draw_pixel_v(position: Vector2, color: Color) : Unit / Ffi
+extern "C"("DrawPixelV") pub fn draw_pixel_v(
+  position: Vector2,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawLineV")
-pub fn draw_line_v(start: Vector2, end: Vector2, color: Color) : Unit / Ffi
+extern "C"("DrawLineV") pub fn draw_line_v(
+  start: Vector2,
+  end: Vector2,
+  color: Color
+) : Unit / Ffi
 
 # Thick line (round-capped). `draw_line` is the 1px integer variant.
-extern "C"("DrawLineEx")
-pub fn draw_line_ex(start: Vector2, end: Vector2, thick: F32, color: Color) : Unit / Ffi
+extern "C"("DrawLineEx") pub fn draw_line_ex(
+  start: Vector2,
+  end: Vector2,
+  thick: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawTriangleLines")
-pub fn draw_triangle_lines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color) : Unit / Ffi
+extern "C"("DrawTriangleLines") pub fn draw_triangle_lines(
+  v1: Vector2,
+  v2: Vector2,
+  v3: Vector2,
+  color: Color
+) : Unit / Ffi
 
 # Regular `sides`-gon centred at `center`, `radius` to each vertex.
-extern "C"("DrawPoly")
-pub fn draw_poly(center: Vector2, sides: I32, radius: F32, rotation: F32, color: Color) : Unit / Ffi
+extern "C"("DrawPoly") pub fn draw_poly(
+  center: Vector2,
+  sides: I32,
+  radius: F32,
+  rotation: F32,
+  color: Color
+) : Unit / Ffi
 
-extern "C"("DrawPolyLines")
-pub fn draw_poly_lines(center: Vector2, sides: I32, radius: F32, rotation: F32, color: Color) : Unit / Ffi
+extern "C"("DrawPolyLines") pub fn draw_poly_lines(
+  center: Vector2,
+  sides: I32,
+  radius: F32,
+  rotation: F32,
+  color: Color
+) : Unit / Ffi
 
 # ----- collisions (all by value) -----
 
-extern "C"("CheckCollisionRecs")
-pub fn check_collision_recs(rec1: Rect, rec2: Rect) : Bool / Ffi
+extern "C"("CheckCollisionRecs") pub fn check_collision_recs(
+  rec1: Rect,
+  rec2: Rect
+) : Bool / Ffi
 
-extern "C"("CheckCollisionCircles")
-pub fn check_collision_circles(center1: Vector2, radius1: F32, center2: Vector2, radius2: F32) : Bool / Ffi
+extern "C"("CheckCollisionCircles") pub fn check_collision_circles(
+  center1: Vector2,
+  radius1: F32,
+  center2: Vector2,
+  radius2: F32
+) : Bool / Ffi
 
-extern "C"("CheckCollisionCircleRec")
-pub fn check_collision_circle_rec(center: Vector2, radius: F32, rec: Rect) : Bool / Ffi
+extern "C"("CheckCollisionCircleRec") pub fn check_collision_circle_rec(
+  center: Vector2,
+  radius: F32,
+  rec: Rect
+) : Bool / Ffi
 
-extern "C"("CheckCollisionPointRec")
-pub fn check_collision_point_rec(point: Vector2, rec: Rect) : Bool / Ffi
+extern "C"("CheckCollisionPointRec") pub fn check_collision_point_rec(
+  point: Vector2,
+  rec: Rect
+) : Bool / Ffi
 
-extern "C"("CheckCollisionPointCircle")
-pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: F32) : Bool / Ffi
+extern "C"("CheckCollisionPointCircle") pub fn check_collision_point_circle(
+  point: Vector2,
+  center: Vector2,
+  radius: F32
+) : Bool / Ffi
 
 # ----- textures (Texture2D crosses by value; no shim) -----
 #
@@ -212,26 +328,50 @@ pub fn check_collision_point_circle(point: Vector2, center: Vector2, radius: F32
 # `source` is the sub-rectangle to sample, `dest` where to put it (with
 # scaling), `origin` the pivot for `rotation`.
 
-extern "C"("LoadTexture")
-pub fn load_texture(path: String) : Texture2D / Ffi
+extern "C"("LoadTexture") pub fn load_texture(
+  path: String
+) : Texture2D / Ffi
 
-extern "C"("UnloadTexture")
-pub fn unload_texture(texture: Texture2D) : Unit / Ffi
+extern "C"("UnloadTexture") pub fn unload_texture(
+  texture: Texture2D
+) : Unit / Ffi
 
-extern "C"("DrawTexture")
-pub fn draw_texture(texture: Texture2D, x: I32, y: I32, tint: Color) : Unit / Ffi
+extern "C"("DrawTexture") pub fn draw_texture(
+  texture: Texture2D,
+  x: I32,
+  y: I32,
+  tint: Color
+) : Unit / Ffi
 
-extern "C"("DrawTextureV")
-pub fn draw_texture_v(texture: Texture2D, position: Vector2, tint: Color) : Unit / Ffi
+extern "C"("DrawTextureV") pub fn draw_texture_v(
+  texture: Texture2D,
+  position: Vector2,
+  tint: Color
+) : Unit / Ffi
 
-extern "C"("DrawTextureEx")
-pub fn draw_texture_ex(texture: Texture2D, position: Vector2, rotation: F32, scale: F32, tint: Color) : Unit / Ffi
+extern "C"("DrawTextureEx") pub fn draw_texture_ex(
+  texture: Texture2D,
+  position: Vector2,
+  rotation: F32,
+  scale: F32,
+  tint: Color
+) : Unit / Ffi
 
-extern "C"("DrawTextureRec")
-pub fn draw_texture_rec(texture: Texture2D, source: Rect, position: Vector2, tint: Color) : Unit / Ffi
+extern "C"("DrawTextureRec") pub fn draw_texture_rec(
+  texture: Texture2D,
+  source: Rect,
+  position: Vector2,
+  tint: Color
+) : Unit / Ffi
 
-extern "C"("DrawTexturePro")
-pub fn draw_texture_pro(texture: Texture2D, source: Rect, dest: Rect, origin: Vector2, rotation: F32, tint: Color) : Unit / Ffi
+extern "C"("DrawTexturePro") pub fn draw_texture_pro(
+  texture: Texture2D,
+  source: Rect,
+  dest: Rect,
+  origin: Vector2,
+  rotation: F32,
+  tint: Color
+) : Unit / Ffi
 
 # ----- 2D camera (Camera2D crosses by value) -----
 #
@@ -240,17 +380,21 @@ pub fn draw_texture_pro(texture: Texture2D, source: Rect, dest: Rect, origin: Ve
 # zoom via zoom). The screen<->world helpers convert a point the same
 # way, e.g. to turn a mouse position into a world coordinate.
 
-extern "C"("BeginMode2D")
-pub fn begin_mode_2d(camera: Camera2D) : Unit / Ffi
+extern "C"("BeginMode2D") pub fn begin_mode_2d(
+  camera: Camera2D
+) : Unit / Ffi
 
-extern "C"("EndMode2D")
-pub fn end_mode_2d() : Unit / Ffi
+extern "C"("EndMode2D") pub fn end_mode_2d() : Unit / Ffi
 
-extern "C"("GetWorldToScreen2D")
-pub fn get_world_to_screen_2d(position: Vector2, camera: Camera2D) : Vector2 / Ffi
+extern "C"("GetWorldToScreen2D") pub fn get_world_to_screen_2d(
+  position: Vector2,
+  camera: Camera2D
+) : Vector2 / Ffi
 
-extern "C"("GetScreenToWorld2D")
-pub fn get_screen_to_world_2d(position: Vector2, camera: Camera2D) : Vector2 / Ffi
+extern "C"("GetScreenToWorld2D") pub fn get_screen_to_world_2d(
+  position: Vector2,
+  camera: Camera2D
+) : Vector2 / Ffi
 
 # ----- input: keyboard -----
 #
@@ -258,78 +402,91 @@ pub fn get_screen_to_world_2d(position: Vector2, camera: Camera2D) : Vector2 / F
 # every frame the key is held (use it for continuous movement). Key
 # codes live in `ffi/keys.kai` (`import ffi.keys`).
 
-extern "C"("IsKeyPressed")
-pub fn is_key_pressed(key: I32) : Bool / Ffi
+extern "C"("IsKeyPressed") pub fn is_key_pressed(
+  key: I32
+) : Bool / Ffi
 
-extern "C"("IsKeyDown")
-pub fn is_key_down(key: I32) : Bool / Ffi
+extern "C"("IsKeyDown") pub fn is_key_down(
+  key: I32
+) : Bool / Ffi
 
-extern "C"("IsKeyReleased")
-pub fn is_key_released(key: I32) : Bool / Ffi
+extern "C"("IsKeyReleased") pub fn is_key_released(
+  key: I32
+) : Bool / Ffi
 
-extern "C"("IsKeyUp")
-pub fn is_key_up(key: I32) : Bool / Ffi
+extern "C"("IsKeyUp") pub fn is_key_up(
+  key: I32
+) : Bool / Ffi
 
 # Pop the next queued keycode / unicode char (0 when the queue drains).
-extern "C"("GetKeyPressed")
-pub fn get_key_pressed() : I32 / Ffi
+extern "C"("GetKeyPressed") pub fn get_key_pressed() : I32 / Ffi
 
-extern "C"("GetCharPressed")
-pub fn get_char_pressed() : I32 / Ffi
+extern "C"("GetCharPressed") pub fn get_char_pressed() : I32 / Ffi
 
 # ----- input: mouse -----
 
-extern "C"("IsMouseButtonPressed")
-pub fn is_mouse_button_pressed(button: I32) : Bool / Ffi
+extern "C"("IsMouseButtonPressed") pub fn is_mouse_button_pressed(
+  button: I32
+) : Bool / Ffi
 
-extern "C"("IsMouseButtonDown")
-pub fn is_mouse_button_down(button: I32) : Bool / Ffi
+extern "C"("IsMouseButtonDown") pub fn is_mouse_button_down(
+  button: I32
+) : Bool / Ffi
 
-extern "C"("IsMouseButtonReleased")
-pub fn is_mouse_button_released(button: I32) : Bool / Ffi
+extern "C"("IsMouseButtonReleased") pub fn is_mouse_button_released(
+  button: I32
+) : Bool / Ffi
 
-extern "C"("GetMouseX")
-pub fn get_mouse_x() : I32 / Ffi
+extern "C"("GetMouseX") pub fn get_mouse_x() : I32 / Ffi
 
-extern "C"("GetMouseY")
-pub fn get_mouse_y() : I32 / Ffi
+extern "C"("GetMouseY") pub fn get_mouse_y() : I32 / Ffi
 
-extern "C"("GetMousePosition")
-pub fn get_mouse_position() : Vector2 / Ffi
+extern "C"("GetMousePosition") pub fn get_mouse_position() : Vector2 / Ffi
 
-extern "C"("GetMouseDelta")
-pub fn get_mouse_delta() : Vector2 / Ffi
+extern "C"("GetMouseDelta") pub fn get_mouse_delta() : Vector2 / Ffi
 
-extern "C"("SetMousePosition")
-pub fn set_mouse_position(x: I32, y: I32) : Unit / Ffi
+extern "C"("SetMousePosition") pub fn set_mouse_position(
+  x: I32,
+  y: I32
+) : Unit / Ffi
 
-extern "C"("GetMouseWheelMove")
-pub fn get_mouse_wheel_move() : F32 / Ffi
+extern "C"("GetMouseWheelMove") pub fn get_mouse_wheel_move() : F32 / Ffi
 
-extern "C"("SetMouseCursor")
-pub fn set_mouse_cursor(cursor: I32) : Unit / Ffi
+extern "C"("SetMouseCursor") pub fn set_mouse_cursor(
+  cursor: I32
+) : Unit / Ffi
 
 # ----- input: gamepad -----
 
-extern "C"("IsGamepadAvailable")
-pub fn is_gamepad_available(gamepad: I32) : Bool / Ffi
+extern "C"("IsGamepadAvailable") pub fn is_gamepad_available(
+  gamepad: I32
+) : Bool / Ffi
 
-extern "C"("IsGamepadButtonPressed")
-pub fn is_gamepad_button_pressed(gamepad: I32, button: I32) : Bool / Ffi
+extern "C"("IsGamepadButtonPressed") pub fn is_gamepad_button_pressed(
+  gamepad: I32,
+  button: I32
+) : Bool / Ffi
 
-extern "C"("IsGamepadButtonDown")
-pub fn is_gamepad_button_down(gamepad: I32, button: I32) : Bool / Ffi
+extern "C"("IsGamepadButtonDown") pub fn is_gamepad_button_down(
+  gamepad: I32,
+  button: I32
+) : Bool / Ffi
 
-extern "C"("GetGamepadAxisMovement")
-pub fn get_gamepad_axis_movement(gamepad: I32, axis: I32) : F32 / Ffi
+extern "C"("GetGamepadAxisMovement") pub fn get_gamepad_axis_movement(
+  gamepad: I32,
+  axis: I32
+) : F32 / Ffi
 
 # ----- random -----
 
-extern "C"("SetRandomSeed")
-pub fn set_random_seed(s: I32) : Unit / Ffi
+extern "C"("SetRandomSeed") pub fn set_random_seed(
+  s: I32
+) : Unit / Ffi
 
-extern "C"("GetRandomValue")
-pub fn get_random_value(min: I32, max: I32) : I32 / Ffi
+extern "C"("GetRandomValue") pub fn get_random_value(
+  min: I32,
+  max: I32
+) : I32 / Ffi
 
 # ----- fonts (Font crosses by value; no shim) -----
 #
@@ -338,25 +495,47 @@ pub fn get_random_value(min: I32, max: I32) : I32 / Ffi
 # DrawTextEx / MeasureTextEx. draw_text_ex takes I32 x/y and packs the
 # Vector2 position itself, keeping the call site's pixel-integer feel.
 
-extern "C"("LoadFontEx")
-pub fn load_font_ex(path: String, size: I32, codepoints: I64, count: I32) : Font / Ffi
+extern "C"("LoadFontEx") pub fn load_font_ex(
+  path: String,
+  size: I32,
+  codepoints: I64,
+  count: I32
+) : Font / Ffi
 
 # Load a font with the default character set (codepoints = NULL, 0).
 pub fn load_font(path: String, size: I32) : Font / Ffi =
   load_font_ex(path, size, 0, 0)
 
-extern "C"("UnloadFont")
-pub fn unload_font(font: Font) : Unit / Ffi
+extern "C"("UnloadFont") pub fn unload_font(
+  font: Font
+) : Unit / Ffi
 
-extern "C"("DrawTextEx")
-fn draw_text_ex_v(font: Font, s: String, pos: Vector2,
-                  size: F32, spacing: F32, color: Color) : Unit / Ffi
+extern "C"("DrawTextEx") fn draw_text_ex_v(
+  font: Font,
+  s: String,
+  pos: Vector2,
+  size: F32,
+  spacing: F32,
+  color: Color
+) : Unit / Ffi
 
-pub fn draw_text_ex(font: Font, s: String,
-                    x: I32, y: I32, size: I32,
-                    spacing: F32, color: Color) : Unit / Ffi =
-  draw_text_ex_v(font, s, Vector2 { x: int_to_real(x), y: int_to_real(y) },
-                 int_to_real(size), spacing, color)
+pub fn draw_text_ex(
+  font: Font,
+  s: String,
+  x: I32,
+  y: I32,
+  size: I32,
+  spacing: F32,
+  color: Color
+) : Unit / Ffi =
+  draw_text_ex_v(
+    font,
+    s,
+    Vector2 { x: int_to_real(x), y: int_to_real(y) },
+    int_to_real(size),
+    spacing,
+    color
+  )
 
 # ----- audio (Sound / Music cross by value; no shim) -----
 #
@@ -365,81 +544,105 @@ pub fn draw_text_ex(font: Font, s: String,
 # C is gen_tone: synthesising a tone means allocating a sample buffer
 # and filling it, which the FFI can't express — see ffi/raylib_audio.c.
 
-extern "C"("InitAudioDevice")
-pub fn init_audio_device() : Unit / Ffi
+extern "C"("InitAudioDevice") pub fn init_audio_device() : Unit / Ffi
 
-extern "C"("CloseAudioDevice")
-pub fn close_audio_device() : Unit / Ffi
+extern "C"("CloseAudioDevice") pub fn close_audio_device() : Unit / Ffi
 
-extern "C"("IsAudioDeviceReady")
-pub fn audio_device_ready() : Bool / Ffi
+extern "C"("IsAudioDeviceReady") pub fn audio_device_ready() : Bool / Ffi
 
-extern "C"("SetMasterVolume")
-pub fn set_master_volume(volume: F32) : Unit / Ffi
+extern "C"("SetMasterVolume") pub fn set_master_volume(
+  volume: F32
+) : Unit / Ffi
 
 # Sounds (short SFX, fully loaded in memory).
 
-extern "C"("LoadSound")
-pub fn load_sound(path: String) : Sound / Ffi
+extern "C"("LoadSound") pub fn load_sound(
+  path: String
+) : Sound / Ffi
 
 # Synthesise a mono sine of `seconds` at `freq` Hz (amp 0..1) into a
 # Sound — no file needed. The sample buffer can't be built in kaikai,
 # so this stays in the C shim.
-extern "C"("kai_raylib_gen_tone")
-pub fn gen_tone(freq: F32, seconds: F32, amp: F32) : Sound / Ffi
+extern "C"("kai_raylib_gen_tone") pub fn gen_tone(
+  freq: F32,
+  seconds: F32,
+  amp: F32
+) : Sound / Ffi
 
-extern "C"("PlaySound")
-pub fn play_sound(sound: Sound) : Unit / Ffi
+extern "C"("PlaySound") pub fn play_sound(
+  sound: Sound
+) : Unit / Ffi
 
-extern "C"("StopSound")
-pub fn stop_sound(sound: Sound) : Unit / Ffi
+extern "C"("StopSound") pub fn stop_sound(
+  sound: Sound
+) : Unit / Ffi
 
-extern "C"("IsSoundPlaying")
-pub fn sound_playing(sound: Sound) : Bool / Ffi
+extern "C"("IsSoundPlaying") pub fn sound_playing(
+  sound: Sound
+) : Bool / Ffi
 
-extern "C"("SetSoundVolume")
-pub fn set_sound_volume(sound: Sound, volume: F32) : Unit / Ffi
+extern "C"("SetSoundVolume") pub fn set_sound_volume(
+  sound: Sound,
+  volume: F32
+) : Unit / Ffi
 
-extern "C"("SetSoundPitch")
-pub fn set_sound_pitch(sound: Sound, pitch: F32) : Unit / Ffi
+extern "C"("SetSoundPitch") pub fn set_sound_pitch(
+  sound: Sound,
+  pitch: F32
+) : Unit / Ffi
 
-extern "C"("UnloadSound")
-pub fn unload_sound(sound: Sound) : Unit / Ffi
+extern "C"("UnloadSound") pub fn unload_sound(
+  sound: Sound
+) : Unit / Ffi
 
 # Music (long tracks, streamed; call update_music every frame).
 
-extern "C"("LoadMusicStream")
-pub fn load_music(path: String) : Music / Ffi
+extern "C"("LoadMusicStream") pub fn load_music(
+  path: String
+) : Music / Ffi
 
-extern "C"("PlayMusicStream")
-pub fn play_music(music: Music) : Unit / Ffi
+extern "C"("PlayMusicStream") pub fn play_music(
+  music: Music
+) : Unit / Ffi
 
-extern "C"("UpdateMusicStream")
-pub fn update_music(music: Music) : Unit / Ffi
+extern "C"("UpdateMusicStream") pub fn update_music(
+  music: Music
+) : Unit / Ffi
 
-extern "C"("StopMusicStream")
-pub fn stop_music(music: Music) : Unit / Ffi
+extern "C"("StopMusicStream") pub fn stop_music(
+  music: Music
+) : Unit / Ffi
 
-extern "C"("PauseMusicStream")
-pub fn pause_music(music: Music) : Unit / Ffi
+extern "C"("PauseMusicStream") pub fn pause_music(
+  music: Music
+) : Unit / Ffi
 
-extern "C"("ResumeMusicStream")
-pub fn resume_music(music: Music) : Unit / Ffi
+extern "C"("ResumeMusicStream") pub fn resume_music(
+  music: Music
+) : Unit / Ffi
 
-extern "C"("IsMusicStreamPlaying")
-pub fn music_playing(music: Music) : Bool / Ffi
+extern "C"("IsMusicStreamPlaying") pub fn music_playing(
+  music: Music
+) : Bool / Ffi
 
-extern "C"("SetMusicVolume")
-pub fn set_music_volume(music: Music, volume: F32) : Unit / Ffi
+extern "C"("SetMusicVolume") pub fn set_music_volume(
+  music: Music,
+  volume: F32
+) : Unit / Ffi
 
-extern "C"("SetMusicPitch")
-pub fn set_music_pitch(music: Music, pitch: F32) : Unit / Ffi
+extern "C"("SetMusicPitch") pub fn set_music_pitch(
+  music: Music,
+  pitch: F32
+) : Unit / Ffi
 
-extern "C"("SeekMusicStream")
-pub fn seek_music(music: Music, position: F32) : Unit / Ffi
+extern "C"("SeekMusicStream") pub fn seek_music(
+  music: Music,
+  position: F32
+) : Unit / Ffi
 
-extern "C"("UnloadMusicStream")
-pub fn unload_music(music: Music) : Unit / Ffi
+extern "C"("UnloadMusicStream") pub fn unload_music(
+  music: Music
+) : Unit / Ffi
 
 # ----- colour helpers (Color by value) -----
 #
@@ -447,30 +650,46 @@ pub fn unload_music(music: Music) : Unit / Ffi
 # color_from_hsv is handy for spreading hues; fade/color_alpha adjust
 # transparency; color_lerp blends two Colors.
 
-extern "C"("Fade")
-pub fn fade(color: Color, alpha: F32) : Color / Ffi
+extern "C"("Fade") pub fn fade(
+  color: Color,
+  alpha: F32
+) : Color / Ffi
 
-extern "C"("ColorAlpha")
-pub fn color_alpha(color: Color, alpha: F32) : Color / Ffi
+extern "C"("ColorAlpha") pub fn color_alpha(
+  color: Color,
+  alpha: F32
+) : Color / Ffi
 
-extern "C"("ColorFromHSV")
-pub fn color_from_hsv(hue: F32, saturation: F32, value: F32) : Color / Ffi
+extern "C"("ColorFromHSV") pub fn color_from_hsv(
+  hue: F32,
+  saturation: F32,
+  value: F32
+) : Color / Ffi
 
-extern "C"("ColorTint")
-pub fn color_tint(color: Color, tint: Color) : Color / Ffi
+extern "C"("ColorTint") pub fn color_tint(
+  color: Color,
+  tint: Color
+) : Color / Ffi
 
-extern "C"("ColorBrightness")
-pub fn color_brightness(color: Color, factor: F32) : Color / Ffi
+extern "C"("ColorBrightness") pub fn color_brightness(
+  color: Color,
+  factor: F32
+) : Color / Ffi
 
-extern "C"("ColorLerp")
-pub fn color_lerp(a: Color, b: Color, factor: F32) : Color / Ffi
+extern "C"("ColorLerp") pub fn color_lerp(
+  a: Color,
+  b: Color,
+  factor: F32
+) : Color / Ffi
 
 # Pack/unpack a 0xRRGGBBAA int (GetColor is the inverse of color_to_int).
-extern "C"("GetColor")
-pub fn get_color(hex: I32) : Color / Ffi
+extern "C"("GetColor") pub fn get_color(
+  hex: I32
+) : Color / Ffi
 
-extern "C"("ColorToInt")
-pub fn color_to_int(color: Color) : I32 / Ffi
+extern "C"("ColorToInt") pub fn color_to_int(
+  color: Color
+) : I32 / Ffi
 
 # ----- text measurement -----
 #
@@ -478,46 +697,68 @@ pub fn color_to_int(color: Color) : I32 / Ffi
 # takes a custom Font (by value, like draw_text_ex) and returns the
 # {width, height} extent as a Vector2.
 
-extern "C"("MeasureText")
-pub fn measure_text(s: String, size: I32) : I32 / Ffi
+extern "C"("MeasureText") pub fn measure_text(
+  s: String,
+  size: I32
+) : I32 / Ffi
 
-extern "C"("MeasureTextEx")
-pub fn measure_text_ex(font: Font, s: String, size: F32, spacing: F32) : Vector2 / Ffi
+extern "C"("MeasureTextEx") pub fn measure_text_ex(
+  font: Font,
+  s: String,
+  size: F32,
+  spacing: F32
+) : Vector2 / Ffi
 
-extern "C"("SetTextLineSpacing")
-pub fn set_text_line_spacing(spacing: I32) : Unit / Ffi
+extern "C"("SetTextLineSpacing") pub fn set_text_line_spacing(
+  spacing: I32
+) : Unit / Ffi
 
 # ----- timing -----
 #
 # get_frame_time is the seconds elapsed since the last frame — the
 # delta to scale movement by so it's frame-rate independent.
 
-extern "C"("GetFrameTime")
-pub fn get_frame_time() : F32 / Ffi
+extern "C"("GetFrameTime") pub fn get_frame_time() : F32 / Ffi
 
-extern "C"("WaitTime")
-pub fn wait_time(seconds: Real) : Unit / Ffi
+extern "C"("WaitTime") pub fn wait_time(
+  seconds: Real
+) : Unit / Ffi
 
 # ----- math (libm direct) -----
 
 extern "C" pub fn sin(x: Real) : Real / Ffi
-extern "C" pub fn cos(x: Real) : Real / Ffi
-extern "C" pub fn tan(x: Real) : Real / Ffi
-extern "C" pub fn asin(x: Real) : Real / Ffi
-extern "C" pub fn acos(x: Real) : Real / Ffi
-extern "C" pub fn atan(x: Real) : Real / Ffi
-extern "C" pub fn atan2(y: Real, x: Real) : Real / Ffi
-extern "C" pub fn sqrt(x: Real) : Real / Ffi
-extern "C" pub fn pow(x: Real, y: Real) : Real / Ffi
-extern "C" pub fn exp(x: Real) : Real / Ffi
-extern "C" pub fn log(x: Real) : Real / Ffi
-extern "C" pub fn floor(x: Real) : Real / Ffi
-extern "C" pub fn ceil(x: Real) : Real / Ffi
-extern "C" pub fn round(x: Real) : Real / Ffi
-extern "C" pub fn fabs(x: Real) : Real / Ffi
-extern "C" pub fn fmod(x: Real, y: Real) : Real / Ffi
-extern "C" pub fn hypot(x: Real, y: Real) : Real / Ffi
 
+extern "C" pub fn cos(x: Real) : Real / Ffi
+
+extern "C" pub fn tan(x: Real) : Real / Ffi
+
+extern "C" pub fn asin(x: Real) : Real / Ffi
+
+extern "C" pub fn acos(x: Real) : Real / Ffi
+
+extern "C" pub fn atan(x: Real) : Real / Ffi
+
+extern "C" pub fn atan2(y: Real, x: Real) : Real / Ffi
+
+extern "C" pub fn sqrt(x: Real) : Real / Ffi
+
+extern "C" pub fn pow(x: Real, y: Real) : Real / Ffi
+
+extern "C" pub fn exp(x: Real) : Real / Ffi
+
+extern "C" pub fn log(x: Real) : Real / Ffi
+
+extern "C" pub fn floor(x: Real) : Real / Ffi
+
+extern "C" pub fn ceil(x: Real) : Real / Ffi
+
+extern "C" pub fn round(x: Real) : Real / Ffi
+
+extern "C" pub fn fabs(x: Real) : Real / Ffi
+
+extern "C" pub fn fmod(x: Real, y: Real) : Real / Ffi
+
+extern "C" pub fn hypot(x: Real, y: Real) : Real / Ffi
 # raymath's scalar helpers (Clamp/Lerp/Remap/Wrap) are intentionally
 # NOT bound: they're one-liners in kaikai, and binding them under
 # common names like `clamp` collides with a caller's own `clamp` on

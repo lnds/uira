@@ -50,9 +50,13 @@ const max_iter : Int = 100
 fn iterate(c: Complex) : Int = iter_loop(c, mk(0.0, 0.0), 0)
 
 fn iter_loop(c: Complex, z: Complex, n: Int) : Int {
-  if n >= max_iter { max_iter }
-  else if abs_sq(z) > 4.0 { n }
-  else { iter_loop(c, z * z + c, n + 1) }
+  if n >= max_iter {
+    max_iter
+  } else if abs_sq(z) > 4.0 {
+    n
+  } else {
+    iter_loop(c, z * z + c, n + 1)
+  }
 }
 
 # ----- palette -----
@@ -63,29 +67,49 @@ fn iter_loop(c: Complex, z: Complex, n: Int) : Int {
 const palette_stops : Int = 16
 
 fn palette(idx: Int) : Color {
-  if idx == 0       { raylib.rgba(0x000a2eFF) }
-  else if idx == 1  { raylib.rgba(0x0a1a4eFF) }
-  else if idx == 2  { raylib.rgba(0x10307aFF) }
-  else if idx == 3  { raylib.rgba(0x1a4a9eFF) }
-  else if idx == 4  { raylib.rgba(0x2470b8FF) }
-  else if idx == 5  { raylib.rgba(0x36a0c8FF) }
-  else if idx == 6  { raylib.rgba(0x60c8c0FF) }
-  else if idx == 7  { raylib.rgba(0x90d8a8FF) }
-  else if idx == 8  { raylib.rgba(0xb8d088FF) }
-  else if idx == 9  { raylib.rgba(0xd8b860FF) }
-  else if idx == 10 { raylib.rgba(0xe8a040FF) }
-  else if idx == 11 { raylib.rgba(0xf28028FF) }
-  else if idx == 12 { raylib.rgba(0xf86018FF) }
-  else if idx == 13 { raylib.rgba(0xfc8c40FF) }
-  else if idx == 14 { raylib.rgba(0xfdc680FF) }
-  else              { raylib.rgba(0xffffe0FF) }
+  if idx == 0 {
+    raylib.rgba(0x000a2eFF)
+  } else if idx == 1 {
+    raylib.rgba(0x0a1a4eFF)
+  } else if idx == 2 {
+    raylib.rgba(0x10307aFF)
+  } else if idx == 3 {
+    raylib.rgba(0x1a4a9eFF)
+  } else if idx == 4 {
+    raylib.rgba(0x2470b8FF)
+  } else if idx == 5 {
+    raylib.rgba(0x36a0c8FF)
+  } else if idx == 6 {
+    raylib.rgba(0x60c8c0FF)
+  } else if idx == 7 {
+    raylib.rgba(0x90d8a8FF)
+  } else if idx == 8 {
+    raylib.rgba(0xb8d088FF)
+  } else if idx == 9 {
+    raylib.rgba(0xd8b860FF)
+  } else if idx == 10 {
+    raylib.rgba(0xe8a040FF)
+  } else if idx == 11 {
+    raylib.rgba(0xf28028FF)
+  } else if idx == 12 {
+    raylib.rgba(0xf86018FF)
+  } else if idx == 13 {
+    raylib.rgba(0xfc8c40FF)
+  } else if idx == 14 {
+    raylib.rgba(0xfdc680FF)
+  } else {
+    raylib.rgba(0xffffe0FF)
+  }
 }
 
 # Map an iter count to a colour. Interior points (n == max_iter)
 # get pure black; the rest indexes evenly into the palette.
 fn color_for(n: Int) : Color {
-  if n >= max_iter { raylib.rgba(0x000000FF) }
-  else { palette((n * palette_stops) / max_iter) }
+  if n >= max_iter {
+    raylib.rgba(0x000000FF)
+  } else {
+    palette(n * palette_stops / max_iter)
+  }
 }
 
 # ============================================================
@@ -97,18 +121,24 @@ fn color_for(n: Int) : Color {
 #  Ref[Int] flag asking the next frame to recompute.
 # ============================================================
 
-const cw : Int = 400          # internal columns
-const ch : Int = 300          # internal rows
+const cw : Int = 400  # internal columns
+
+const ch : Int = 300  # internal rows
+
 const buf_len : Int = 120000  # cw * ch
 
 # Default Mandelbrot view.
 const default_re_min : Real = 0.0 - 2.5
+
 const default_re_max : Real = 1.0
+
 const default_im_min : Real = 0.0 - 1.0
+
 const default_im_max : Real = 1.0
 
 # Pan / zoom step (fractions of current span per keypress).
-const pan_step  : Real = 0.15
+const pan_step : Real = 0.15
+
 const zoom_step : Real = 0.7
 
 # ----- compute pass -----
@@ -116,17 +146,23 @@ const zoom_step : Real = 0.7
 # Walk the cw*ch grid; for each pixel build a `Complex` and store
 # its iter count in `buf`. Single linear index, recursion + TCO.
 
-fn compute(buf: Array[Int],
-           re_min: Real, re_max: Real,
-           im_min: Real, im_max: Real) : Unit / Mutable {
+fn compute(
+  buf: Array[Int],
+  re_min: Real,
+  re_max: Real,
+  im_min: Real,
+  im_max: Real
+) : Unit / Mutable {
   let dre = (re_max - re_min) / int_to_real(cw)
   let dim = (im_max - im_min) / int_to_real(ch)
   var i := 0
   repeat(buf_len) {
     let cx = i % cw
     let cy = i / cw
-    let c = mk(re_min + int_to_real(cx) * dre,
-               im_min + int_to_real(cy) * dim)
+    let c = mk(
+      re_min + int_to_real(cx) * dre,
+      im_min + int_to_real(cy) * dim
+    )
     buf[i] := iterate(c)
     i := i + 1
   }
@@ -137,30 +173,45 @@ fn compute(buf: Array[Int],
 # Each handler shifts / scales the (re, im) bounds and raises
 # the dirty flag so the next frame recomputes.
 
-fn pan_re(re_min: Ref[Real], re_max: Ref[Real],
-          dirty: Ref[Int], delta: Real) : Unit / Mutable = {
-  let span = @re_max - @re_min
+fn pan_re(
+  re_min: Ref[Real],
+  re_max: Ref[Real],
+  dirty: Ref[Int],
+  delta: Real
+) : Unit / Mutable {
+  let span = (@re_max) - (@re_min)
   let d = span * pan_step * delta
-  re_min := @re_min + d
-  re_max := @re_max + d
+  re_min := (@re_min) + d
+  re_max := (@re_max) + d
   dirty := 1
 }
 
-fn pan_im(im_min: Ref[Real], im_max: Ref[Real],
-          dirty: Ref[Int], delta: Real) : Unit / Mutable = {
-  let span = @im_max - @im_min
+fn pan_im(
+  im_min: Ref[Real],
+  im_max: Ref[Real],
+  dirty: Ref[Int],
+  delta: Real
+) : Unit / Mutable {
+  let span = (@im_max) - (@im_min)
   let d = span * pan_step * delta
-  im_min := @im_min + d
-  im_max := @im_max + d
+  im_min := (@im_min) + d
+  im_max := (@im_max) + d
   dirty := 1
 }
 
 # Scale the viewport around its centre. `factor < 1.0` zooms in.
-fn zoom_view(re_min: Ref[Real], re_max: Ref[Real],
-             im_min: Ref[Real], im_max: Ref[Real],
-             dirty: Ref[Int], factor: Real) : Unit / Mutable = {
-  let r0 = @re_min; let r1 = @re_max
-  let i0 = @im_min; let i1 = @im_max
+fn zoom_view(
+  re_min: Ref[Real],
+  re_max: Ref[Real],
+  im_min: Ref[Real],
+  im_max: Ref[Real],
+  dirty: Ref[Int],
+  factor: Real
+) : Unit / Mutable {
+  let r0 = @re_min
+  let r1 = @re_max
+  let i0 = @im_min
+  let i1 = @im_max
   let cre = (r0 + r1) * 0.5
   let cim = (i0 + i1) * 0.5
   let half_re = (r1 - r0) * 0.5 * factor
@@ -172,9 +223,13 @@ fn zoom_view(re_min: Ref[Real], re_max: Ref[Real],
   dirty := 1
 }
 
-fn reset_view(re_min: Ref[Real], re_max: Ref[Real],
-              im_min: Ref[Real], im_max: Ref[Real],
-              dirty: Ref[Int]) : Unit / Mutable = {
+fn reset_view(
+  re_min: Ref[Real],
+  re_max: Ref[Real],
+  im_min: Ref[Real],
+  im_max: Ref[Real],
+  dirty: Ref[Int]
+) : Unit / Mutable {
   re_min := default_re_min
   re_max := default_re_max
   im_min := default_im_min
@@ -189,11 +244,13 @@ fn reset_view(re_min: Ref[Real], re_max: Ref[Real],
 #  cell to a colour through the palette. Never mutates state.
 # ============================================================
 
-const px : Int = 2          # pixel size on screen (cw*px = 800)
+const px : Int = 2  # pixel size on screen (cw*px = 800)
+
 const col_bg : Color = rgba(0x000010FF)
+
 const col_text : Color = rgba(0xfdf9b9FF)
 
-fn draw_buffer(buf: Array[Int]) : Unit / Ffi = {
+fn draw_buffer(buf: Array[Int]) : Unit / Ffi {
   var i := 0
   repeat(buf_len) {
     let n = buf[i]
@@ -210,8 +267,13 @@ fn draw_buffer(buf: Array[Int]) : Unit / Ffi = {
 
 fn draw_hud(recomputing: Bool) : Unit / Ffi {
   raylib.draw_text("mandelbrot / kaikai + raylib", 10, 8, 14, col_text)
-  raylib.draw_text("arrows pan   +/- zoom   R reset   ESC quit",
-                   10, 580, 14, col_text)
+  raylib.draw_text(
+    "arrows pan   +/- zoom   R reset   ESC quit",
+    10,
+    580,
+    14,
+    col_text
+  )
   if recomputing {
     raylib.draw_text("computing...", 660, 8, 14, col_text)
   } else {
@@ -223,14 +285,17 @@ fn draw_hud(recomputing: Bool) : Unit / Ffi {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-
-fn handle_input(re_min: Ref[Real], re_max: Ref[Real],
-                im_min: Ref[Real], im_max: Ref[Real],
-                dirty: Ref[Int]) : Unit / Ffi + Mutable {
-  if raylib.is_key_pressed(key_left)  { pan_re(re_min, re_max, dirty, 0.0 - 1.0) }
-  if raylib.is_key_pressed(key_right) { pan_re(re_min, re_max, dirty,  1.0) }
-  if raylib.is_key_pressed(key_up)    { pan_im(im_min, im_max, dirty, 0.0 - 1.0) }
-  if raylib.is_key_pressed(key_down)  { pan_im(im_min, im_max, dirty,  1.0) }
+fn handle_input(
+  re_min: Ref[Real],
+  re_max: Ref[Real],
+  im_min: Ref[Real],
+  im_max: Ref[Real],
+  dirty: Ref[Int]
+) : Unit / Ffi + Mutable {
+  if raylib.is_key_pressed(key_left) { pan_re(re_min, re_max, dirty, 0.0 - 1.0) }
+  if raylib.is_key_pressed(key_right) { pan_re(re_min, re_max, dirty, 1.0) }
+  if raylib.is_key_pressed(key_up) { pan_im(im_min, im_max, dirty, 0.0 - 1.0) }
+  if raylib.is_key_pressed(key_down) { pan_im(im_min, im_max, dirty, 1.0) }
 
   if raylib.is_key_pressed(key_equal) or raylib.is_key_pressed(key_kp_add) {
     zoom_view(re_min, re_max, im_min, im_max, dirty, zoom_step)
@@ -243,16 +308,20 @@ fn handle_input(re_min: Ref[Real], re_max: Ref[Real],
   }
 }
 
-fn frame_loop(buf: Array[Int],
-              re_min: Ref[Real], re_max: Ref[Real],
-              im_min: Ref[Real], im_max: Ref[Real],
-              dirty: Ref[Int]) : Unit / Ffi + Mutable = {
+fn frame_loop(
+  buf: Array[Int],
+  re_min: Ref[Real],
+  re_max: Ref[Real],
+  im_min: Ref[Real],
+  im_max: Ref[Real],
+  dirty: Ref[Int]
+) : Unit / Ffi + Mutable {
   until { raylib.window_should_close() } {
     # ---- input ----
     handle_input(re_min, re_max, im_min, im_max, dirty)
 
     # ---- MODEL: recompute if the viewport changed ----
-    if @dirty != 0 {
+    if (@dirty) != 0 {
       # Repaint a "computing..." HUD before the kernel kicks
       # so the user sees feedback during the recompute.
       raylib.begin_drawing()
@@ -260,9 +329,13 @@ fn frame_loop(buf: Array[Int],
       draw_hud(true)
       raylib.end_drawing()
 
-      compute(buf,
-              @re_min, @re_max,
-              @im_min, @im_max)
+      compute(
+        buf,
+        @re_min,
+        @re_max,
+        @im_min,
+        @im_max
+      )
       dirty := 0
     }
 
@@ -281,7 +354,7 @@ fn main() : Unit / Ffi + Mutable {
   let re_max = Mutable.ref_make(default_re_max)
   let im_min = Mutable.ref_make(default_im_min)
   let im_max = Mutable.ref_make(default_im_max)
-  let dirty  = Mutable.ref_make(1)   # compute on the first frame
+  let dirty = Mutable.ref_make(1)  # compute on the first frame
 
   raylib.init_window(800, 600, "Mandelbrot / kaikai + raylib")
   raylib.set_target_fps(60)

@@ -41,14 +41,18 @@ import loop
 const count : Int = 150
 
 # Neighbourhood radii (squared, so we compare d² and skip a sqrt).
-const r_sep_sq   : Real = 484.0    # 22^2 — separation
-const r_align_sq : Real = 2500.0   # 50^2 — alignment
-const r_coh_sq   : Real = 3600.0   # 60^2 — cohesion
+const r_sep_sq : Real = 484.0  # 22^2 — separation
+
+const r_align_sq : Real = 2500.0  # 50^2 — alignment
+
+const r_coh_sq : Real = 3600.0  # 60^2 — cohesion
 
 # Per-rule weights applied each step.
-const w_sep   : Real = 0.05
+const w_sep : Real = 0.05
+
 const w_align : Real = 0.05
-const w_coh   : Real = 0.005
+
+const w_coh : Real = 0.005
 
 # Velocity ceiling (pixels per frame).
 const max_speed : Real = 3.5
@@ -63,14 +67,22 @@ const max_speed : Real = 3.5
 # write than `Mutable.ref_get(c)` everywhere.)
 
 fn rcell() : Array[Real] = array_make(1, 0.0)
-fn icell() : Array[Int]  = array_make(1, 0)
 
-fn rclear(c: Array[Real]) : Unit / Mutable { c[0] := 0.0 }
-fn iclear(c: Array[Int])  : Unit / Mutable { c[0] := 0 }
+fn icell() : Array[Int] = array_make(1, 0)
+
+fn rclear(c: Array[Real]) : Unit / Mutable {
+  c[0] := 0.0
+}
+
+fn iclear(c: Array[Int]) : Unit / Mutable {
+  c[0] := 0
+}
 
 # Generic accumulate: works for Array[Real] + Real and Array[Int]
 # + Int. The `+` resolves at each instantiation (Real/Int).
-fn add[T](c: Array[T], v: T) : Unit / Mutable { c[0] := c[0] + v }
+fn add[T](c: Array[T], v: T) : Unit / Mutable {
+  c[0] := c[0] + v
+}
 
 # ----- neighbour scan -----
 #
@@ -80,12 +92,21 @@ fn add[T](c: Array[T], v: T) : Unit / Mutable { c[0] := c[0] + v }
 # it runs ~22500 pair-checks per frame.
 
 fn scan_neighbours(
-  i: Int, xi: Real, yi: Real,
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  sep_x: Array[Real], sep_y: Array[Real],
-  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
-  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
+  i: Int,
+  xi: Real,
+  yi: Real,
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real],
+  sep_x: Array[Real],
+  sep_y: Array[Real],
+  ali_x: Array[Real],
+  ali_y: Array[Real],
+  n_ali: Array[Int],
+  coh_x: Array[Real],
+  coh_y: Array[Real],
+  n_coh: Array[Int]
 ) : Unit / Mutable {
   var j := 0
   repeat(count) {
@@ -116,6 +137,7 @@ fn scan_neighbours(
         add(n_coh, 1)
       }
     }
+
     j := j + 1
   }
 }
@@ -128,30 +150,57 @@ fn scan_neighbours(
 # the same frame.
 fn step_one(
   i: Int,
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  out_vxs: Array[Real], out_vys: Array[Real],
-  sep_x: Array[Real], sep_y: Array[Real],
-  ali_x: Array[Real], ali_y: Array[Real], n_ali: Array[Int],
-  coh_x: Array[Real], coh_y: Array[Real], n_coh: Array[Int]
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real],
+  out_vxs: Array[Real],
+  out_vys: Array[Real],
+  sep_x: Array[Real],
+  sep_y: Array[Real],
+  ali_x: Array[Real],
+  ali_y: Array[Real],
+  n_ali: Array[Int],
+  coh_x: Array[Real],
+  coh_y: Array[Real],
+  n_coh: Array[Int]
 ) : Unit / Ffi + Mutable {
   let xi = xs[i]
   let yi = ys[i]
   let vxi = vxs[i]
   let vyi = vys[i]
 
-  rclear(sep_x); rclear(sep_y)
-  rclear(ali_x); rclear(ali_y); iclear(n_ali)
-  rclear(coh_x); rclear(coh_y); iclear(n_coh)
+  rclear(sep_x)
+  rclear(sep_y)
+  rclear(ali_x)
+  rclear(ali_y)
+  iclear(n_ali)
+  rclear(coh_x)
+  rclear(coh_y)
+  iclear(n_coh)
 
-  scan_neighbours(i, xi, yi, xs, ys, vxs, vys,
-                  sep_x, sep_y, ali_x, ali_y, n_ali,
-                  coh_x, coh_y, n_coh)
+  scan_neighbours(
+    i,
+    xi,
+    yi,
+    xs,
+    ys,
+    vxs,
+    vys,
+    sep_x,
+    sep_y,
+    ali_x,
+    ali_y,
+    n_ali,
+    coh_x,
+    coh_y,
+    n_coh
+  )
 
-  let coh_dx = if n_coh[0] > 0 { (coh_x[0] / int_to_real(n_coh[0])) - xi }  else { 0.0 }
-  let coh_dy = if n_coh[0] > 0 { (coh_y[0] / int_to_real(n_coh[0])) - yi }  else { 0.0 }
-  let ali_dx = if n_ali[0] > 0 { (ali_x[0] / int_to_real(n_ali[0])) - vxi } else { 0.0 }
-  let ali_dy = if n_ali[0] > 0 { (ali_y[0] / int_to_real(n_ali[0])) - vyi } else { 0.0 }
+  let coh_dx = if n_coh[0] > 0 { coh_x[0] / int_to_real(n_coh[0]) - xi } else { 0.0 }
+  let coh_dy = if n_coh[0] > 0 { coh_y[0] / int_to_real(n_coh[0]) - yi } else { 0.0 }
+  let ali_dx = if n_ali[0] > 0 { ali_x[0] / int_to_real(n_ali[0]) - vxi } else { 0.0 }
+  let ali_dy = if n_ali[0] > 0 { ali_y[0] / int_to_real(n_ali[0]) - vyi } else { 0.0 }
 
   let new_vx = vxi + w_sep * sep_x[0] + w_align * ali_dx + w_coh * coh_dx
   let new_vy = vyi + w_sep * sep_y[0] + w_align * ali_dy + w_coh * coh_dy
@@ -178,11 +227,16 @@ fn step_one(
 #  write target for one full sweep. `randomize` plants the seed.
 # ============================================================
 
-const width  : Real = 800.0
+const width : Real = 800.0
+
 const height : Real = 600.0
 
-fn randomize(xs: Array[Real], ys: Array[Real],
-             vxs: Array[Real], vys: Array[Real]) : Unit / Ffi + Mutable {
+fn randomize(
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real]
+) : Unit / Ffi + Mutable {
   var i := 0
   repeat(count) {
     xs[i] := int_to_real(raylib.get_random_value(0, 800))
@@ -195,25 +249,51 @@ fn randomize(xs: Array[Real], ys: Array[Real],
 
 # Wrap a coordinate around the screen torus.
 fn wrap_pos(v: Real, max: Real) : Real {
-  if v < 0.0 { v + max }
-  else if v >= max { v - max }
-  else { v }
+  if v < 0.0 {
+    v + max
+  } else if v >= max {
+    v - max
+  } else {
+    v
+  }
 }
 
 # Run step_one for every boid into the `next_v` arrays.
 fn step_velocities(
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real]
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real],
+  next_vxs: Array[Real],
+  next_vys: Array[Real]
 ) : Unit / Ffi + Mutable {
-  let sep_x = rcell(); let sep_y = rcell()
-  let ali_x = rcell(); let ali_y = rcell(); let n_ali = icell()
-  let coh_x = rcell(); let coh_y = rcell(); let n_coh = icell()
+  let sep_x = rcell()
+  let sep_y = rcell()
+  let ali_x = rcell()
+  let ali_y = rcell()
+  let n_ali = icell()
+  let coh_x = rcell()
+  let coh_y = rcell()
+  let n_coh = icell()
   var i := 0
   repeat(count) {
-    step_one(i, xs, ys, vxs, vys, next_vxs, next_vys,
-             sep_x, sep_y, ali_x, ali_y, n_ali,
-             coh_x, coh_y, n_coh)
+    step_one(
+      i,
+      xs,
+      ys,
+      vxs,
+      vys,
+      next_vxs,
+      next_vys,
+      sep_x,
+      sep_y,
+      ali_x,
+      ali_y,
+      n_ali,
+      coh_x,
+      coh_y,
+      n_coh
+    )
     i := i + 1
   }
 }
@@ -221,9 +301,12 @@ fn step_velocities(
 # Apply new velocities to positions, with screen wrap. Velocities
 # in (vxs, vys) are overwritten from (next_vxs, next_vys).
 fn apply_step(
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real]
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real],
+  next_vxs: Array[Real],
+  next_vys: Array[Real]
 ) : Unit / Mutable {
   var i := 0
   repeat(count) {
@@ -244,8 +327,10 @@ fn apply_step(
 #  translated to (x, y). Reads xs/ys/vxs/vys; never mutates.
 # ============================================================
 
-const col_bg   : Color = rgba(0x0a0a14FF)
+const col_bg : Color = rgba(0x0a0a14FF)
+
 const col_boid : Color = rgba(0xfdf9b9FF)
+
 const col_text : Color = rgba(0xfdf9b9FF)
 
 fn boid_size() : Real = 7.0
@@ -253,35 +338,46 @@ fn boid_size() : Real = 7.0
 fn draw_one(x: Real, y: Real, vx: Real, vy: Real) : Unit / Ffi {
   let speed_sq = vx * vx + vy * vy
   let theta =
-    if speed_sq < 0.0001 { 0.0 }
-    else { raylib.atan2(vy, vx) }
+    if speed_sq < 0.0001 {
+      0.0
+    } else {
+      raylib.atan2(vy, vx)
+    }
   let ct = raylib.cos(theta)
   let st = raylib.sin(theta)
   let sz = boid_size()
 
   # Local triangle: tip at (sz, 0), tail corners at (-sz/2, ±sz/2).
-  let tip_lx = sz;              let tip_ly = 0.0
-  let l_lx  = 0.0 - (sz * 0.5); let l_ly = 0.0 - (sz * 0.6)
-  let r_lx  = 0.0 - (sz * 0.5); let r_ly = sz * 0.6
+  let tip_lx = sz
+  let tip_ly = 0.0
+  let l_lx = 0.0 - sz * 0.5
+  let l_ly = 0.0 - sz * 0.6
+  let r_lx = 0.0 - sz * 0.5
+  let r_ly = sz * 0.6
 
   let tip_wx = ct * tip_lx - st * tip_ly + x
   let tip_wy = st * tip_lx + ct * tip_ly + y
-  let l_wx   = ct * l_lx   - st * l_ly   + x
-  let l_wy   = st * l_lx   + ct * l_ly   + y
-  let r_wx   = ct * r_lx   - st * r_ly   + x
-  let r_wy   = st * r_lx   + ct * r_ly   + y
+  let l_wx = ct * l_lx - st * l_ly + x
+  let l_wy = st * l_lx + ct * l_ly + y
+  let r_wx = ct * r_lx - st * r_ly + x
+  let r_wy = st * r_lx + ct * r_ly + y
 
   # raylib DrawTriangle expects clockwise winding; our
   # (tip, left, right) order is clockwise in raylib's y-down screen.
   raylib.draw_triangle_v(
     Vector2 { x: tip_wx, y: tip_wy },
-    Vector2 { x: l_wx,   y: l_wy },
-    Vector2 { x: r_wx,   y: r_wy },
-    col_boid)
+    Vector2 { x: l_wx, y: l_wy },
+    Vector2 { x: r_wx, y: r_wy },
+    col_boid
+  )
 }
 
-fn draw_all(xs: Array[Real], ys: Array[Real],
-            vxs: Array[Real], vys: Array[Real]) : Unit / Ffi {
+fn draw_all(
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real]
+) : Unit / Ffi {
   var i := 0
   repeat(count) {
     draw_one(xs[i], ys[i], vxs[i], vys[i])
@@ -291,8 +387,13 @@ fn draw_all(xs: Array[Real], ys: Array[Real],
 
 fn draw_hud(paused: Bool) : Unit / Ffi {
   raylib.draw_text("boids / kaikai + raylib", 10, 8, 14, col_text)
-  raylib.draw_text("SPACE pause   R randomize   ESC quit",
-                10, 580, 14, col_text)
+  raylib.draw_text(
+    "SPACE pause   R randomize   ESC quit",
+    10,
+    580,
+    14,
+    col_text
+  )
   let label = if paused { "PAUSED   fps " } else { "running  fps " }
   raylib.draw_text(label, 580, 8, 14, col_text)
   raylib.draw_text(int_to_string(raylib.get_fps()), 700, 8, 14, col_text)
@@ -302,18 +403,20 @@ fn draw_hud(paused: Bool) : Unit / Ffi {
 #  ===== ORCHESTRATOR ===========================================
 # ============================================================
 
-
 fn frame_loop(
-  xs: Array[Real], ys: Array[Real],
-  vxs: Array[Real], vys: Array[Real],
-  next_vxs: Array[Real], next_vys: Array[Real]
+  xs: Array[Real],
+  ys: Array[Real],
+  vxs: Array[Real],
+  vys: Array[Real],
+  next_vxs: Array[Real],
+  next_vys: Array[Real]
 ) : Unit / Ffi + Mutable {
   var paused := false
 
   until { raylib.window_should_close() } {
     # ---- input ----
     if raylib.is_key_pressed(key_space) { paused := not paused }
-    if raylib.is_key_pressed(key_r)     { randomize(xs, ys, vxs, vys) }
+    if raylib.is_key_pressed(key_r) { randomize(xs, ys, vxs, vys) }
 
     # ---- MODEL + STATE: tick the simulation ----
     if not paused {
