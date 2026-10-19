@@ -49,8 +49,7 @@ extern "C" type Sound = { stream: AudioStream, frame_count: U32 }
 # either way, and a fixed-width word keeps the by-value copy exact.
 extern "C" type Music = { stream: AudioStream, frame_count: U32, looping: I32, ctx_type: I32, ctx_data: I64 }
 
-# Pack a 0xRRGGBBAA literal into a Color. Lets call sites keep
-# writing colors as hex while a real struct crosses the boundary.
+#[doc("Packs a 0xRRGGBBAA integer literal into a `Color`, so call sites can keep writing colors as hex.")]
 pub fn rgba(p: Int) : Color =
   Color {
     r: p / 16777216 % 256,
@@ -61,36 +60,46 @@ pub fn rgba(p: Int) : Color =
 
 # ----- window / lifecycle -----
 
+#[doc("Opens a `w`×`h` window titled `title` and initialises the OpenGL context (raylib `InitWindow`).")]
 extern "C"("InitWindow") pub fn init_window(
   w: I32,
   h: I32,
   title: String
 ) : Unit / Ffi
 
+#[doc("Closes the window and unloads the OpenGL context (raylib `CloseWindow`).")]
 extern "C"("CloseWindow") pub fn close_window() : Unit / Ffi
 
+#[doc("Returns true once the user asks to close the window (close button or Escape) (raylib `WindowShouldClose`).")]
 extern "C"("WindowShouldClose") pub fn window_should_close() : Bool / Ffi
 
+#[doc("Sets the target frame rate that `end_drawing` paces to (raylib `SetTargetFPS`).")]
 extern "C"("SetTargetFPS") pub fn set_target_fps(
   fps: I32
 ) : Unit / Ffi
 
+#[doc("Returns the current frames per second (raylib `GetFPS`).")]
 extern "C"("GetFPS") pub fn get_fps() : I32 / Ffi
 
+#[doc("Returns the seconds elapsed since `init_window` (raylib `GetTime`).")]
 extern "C"("GetTime") pub fn get_time() : Real / Ffi
 
 # ----- frame -----
 
+#[doc("Starts a frame; pair with `end_drawing` (raylib `BeginDrawing`).")]
 extern "C"("BeginDrawing") pub fn begin_drawing() : Unit / Ffi
 
+#[doc("Ends the frame, swaps buffers and polls input events (raylib `EndDrawing`).")]
 extern "C"("EndDrawing") pub fn end_drawing() : Unit / Ffi
 
+#[doc("Fills the whole framebuffer with `color` (raylib `ClearBackground`).")]
 extern "C"("ClearBackground") pub fn clear_background(
   color: Color
 ) : Unit / Ffi
 
 # ----- shapes / text -----
 
+#[doc("Draws a filled rectangle at integer `x`, `y` with size `w`×`h` (raylib `DrawRectangle`).")]
 extern "C"("DrawRectangle") pub fn draw_rectangle(
   x: I32,
   y: I32,
@@ -99,12 +108,14 @@ extern "C"("DrawRectangle") pub fn draw_rectangle(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a single pixel at `x`, `y` (raylib `DrawPixel`).")]
 extern "C"("DrawPixel") pub fn draw_pixel(
   x: I32,
   y: I32,
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws `s` with the default font at `x`, `y`, `size` pixels tall (raylib `DrawText`).")]
 extern "C"("DrawText") pub fn draw_text(
   s: String,
   x: I32,
@@ -113,6 +124,7 @@ extern "C"("DrawText") pub fn draw_text(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled triangle; vertices go in counter-clockwise order (raylib `DrawTriangle`).")]
 extern "C"("DrawTriangle") pub fn draw_triangle_v(
   v1: Vector2,
   v2: Vector2,
@@ -120,6 +132,7 @@ extern "C"("DrawTriangle") pub fn draw_triangle_v(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a 1px line between two integer points (raylib `DrawLine`).")]
 extern "C"("DrawLine") pub fn draw_line(
   x1: I32,
   y1: I32,
@@ -128,6 +141,7 @@ extern "C"("DrawLine") pub fn draw_line(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled circle centred at `x`, `y` with radius `r` (raylib `DrawCircle`).")]
 extern "C"("DrawCircle") pub fn draw_circle(
   x: I32,
   y: I32,
@@ -137,18 +151,20 @@ extern "C"("DrawCircle") pub fn draw_circle(
 
 # ----- shapes: rectangles (Vector2 / Rect by value) -----
 
+#[doc("Draws a filled rectangle from a `Vector2` position and size (raylib `DrawRectangleV`).")]
 extern "C"("DrawRectangleV") pub fn draw_rectangle_v(
   position: Vector2,
   size: Vector2,
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled `Rect` (raylib `DrawRectangleRec`).")]
 extern "C"("DrawRectangleRec") pub fn draw_rectangle_rec(
   rec: Rect,
   color: Color
 ) : Unit / Ffi
 
-# Rotated rectangle: `origin` is the pivot (relative to rec's top-left).
+#[doc("Draws a rotated rectangle; `origin` is the pivot relative to `rec`'s top-left, `rotation` in degrees (raylib `DrawRectanglePro`).")]
 extern "C"("DrawRectanglePro") pub fn draw_rectangle_pro(
   rec: Rect,
   origin: Vector2,
@@ -156,6 +172,7 @@ extern "C"("DrawRectanglePro") pub fn draw_rectangle_pro(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a rectangle outline at integer `x`, `y` with size `w`×`h` (raylib `DrawRectangleLines`).")]
 extern "C"("DrawRectangleLines") pub fn draw_rectangle_lines(
   x: I32,
   y: I32,
@@ -164,12 +181,14 @@ extern "C"("DrawRectangleLines") pub fn draw_rectangle_lines(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a `Rect` outline `line_thick` pixels wide (raylib `DrawRectangleLinesEx`).")]
 extern "C"("DrawRectangleLinesEx") pub fn draw_rectangle_lines_ex(
   rec: Rect,
   line_thick: F32,
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled `Rect` with rounded corners; `roundness` runs 0..1 (raylib `DrawRectangleRounded`).")]
 extern "C"("DrawRectangleRounded") pub fn draw_rectangle_rounded(
   rec: Rect,
   roundness: F32,
@@ -177,6 +196,7 @@ extern "C"("DrawRectangleRounded") pub fn draw_rectangle_rounded(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a rectangle with a vertical gradient from `top` to `bottom` (raylib `DrawRectangleGradientV`).")]
 extern "C"("DrawRectangleGradientV") pub fn draw_rectangle_gradient_v(
   x: I32,
   y: I32,
@@ -186,6 +206,7 @@ extern "C"("DrawRectangleGradientV") pub fn draw_rectangle_gradient_v(
   bottom: Color
 ) : Unit / Ffi
 
+#[doc("Draws a rectangle with a horizontal gradient from `left` to `right` (raylib `DrawRectangleGradientH`).")]
 extern "C"("DrawRectangleGradientH") pub fn draw_rectangle_gradient_h(
   x: I32,
   y: I32,
@@ -197,12 +218,14 @@ extern "C"("DrawRectangleGradientH") pub fn draw_rectangle_gradient_h(
 
 # ----- shapes: circles / ellipses -----
 
+#[doc("Draws a filled circle at a `Vector2` centre (raylib `DrawCircleV`).")]
 extern "C"("DrawCircleV") pub fn draw_circle_v(
   center: Vector2,
   radius: F32,
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a circle outline centred at `x`, `y` (raylib `DrawCircleLines`).")]
 extern "C"("DrawCircleLines") pub fn draw_circle_lines(
   x: I32,
   y: I32,
@@ -210,6 +233,7 @@ extern "C"("DrawCircleLines") pub fn draw_circle_lines(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled circle with a radial gradient from `inner` to `outer` (raylib `DrawCircleGradient`).")]
 extern "C"("DrawCircleGradient") pub fn draw_circle_gradient(
   x: I32,
   y: I32,
@@ -218,6 +242,7 @@ extern "C"("DrawCircleGradient") pub fn draw_circle_gradient(
   outer: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled circle sector between two angles in degrees (raylib `DrawCircleSector`).")]
 extern "C"("DrawCircleSector") pub fn draw_circle_sector(
   center: Vector2,
   radius: F32,
@@ -227,6 +252,7 @@ extern "C"("DrawCircleSector") pub fn draw_circle_sector(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled ellipse centred at `x`, `y` with radii `radius_h`, `radius_v` (raylib `DrawEllipse`).")]
 extern "C"("DrawEllipse") pub fn draw_ellipse(
   x: I32,
   y: I32,
@@ -235,6 +261,7 @@ extern "C"("DrawEllipse") pub fn draw_ellipse(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a filled ring (annulus) sector between two angles in degrees (raylib `DrawRing`).")]
 extern "C"("DrawRing") pub fn draw_ring(
   center: Vector2,
   inner_radius: F32,
@@ -247,18 +274,20 @@ extern "C"("DrawRing") pub fn draw_ring(
 
 # ----- shapes: lines / pixels / polygons -----
 
+#[doc("Draws a single pixel at a `Vector2` position (raylib `DrawPixelV`).")]
 extern "C"("DrawPixelV") pub fn draw_pixel_v(
   position: Vector2,
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a 1px line between two `Vector2` points (raylib `DrawLineV`).")]
 extern "C"("DrawLineV") pub fn draw_line_v(
   start: Vector2,
   end: Vector2,
   color: Color
 ) : Unit / Ffi
 
-# Thick line (round-capped). `draw_line` is the 1px integer variant.
+#[doc("Draws a line `thick` pixels wide; `draw_line` is the 1px integer variant (raylib `DrawLineEx`).")]
 extern "C"("DrawLineEx") pub fn draw_line_ex(
   start: Vector2,
   end: Vector2,
@@ -266,6 +295,7 @@ extern "C"("DrawLineEx") pub fn draw_line_ex(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a triangle outline (raylib `DrawTriangleLines`).")]
 extern "C"("DrawTriangleLines") pub fn draw_triangle_lines(
   v1: Vector2,
   v2: Vector2,
@@ -273,7 +303,7 @@ extern "C"("DrawTriangleLines") pub fn draw_triangle_lines(
   color: Color
 ) : Unit / Ffi
 
-# Regular `sides`-gon centred at `center`, `radius` to each vertex.
+#[doc("Draws a filled regular `sides`-gon centred at `center`, `radius` to each vertex (raylib `DrawPoly`).")]
 extern "C"("DrawPoly") pub fn draw_poly(
   center: Vector2,
   sides: I32,
@@ -282,6 +312,7 @@ extern "C"("DrawPoly") pub fn draw_poly(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws a regular `sides`-gon outline centred at `center` (raylib `DrawPolyLines`).")]
 extern "C"("DrawPolyLines") pub fn draw_poly_lines(
   center: Vector2,
   sides: I32,
@@ -292,11 +323,13 @@ extern "C"("DrawPolyLines") pub fn draw_poly_lines(
 
 # ----- collisions (all by value) -----
 
+#[doc("Returns true when two `Rect`s overlap (raylib `CheckCollisionRecs`).")]
 extern "C"("CheckCollisionRecs") pub fn check_collision_recs(
   rec1: Rect,
   rec2: Rect
 ) : Bool / Ffi
 
+#[doc("Returns true when two circles overlap (raylib `CheckCollisionCircles`).")]
 extern "C"("CheckCollisionCircles") pub fn check_collision_circles(
   center1: Vector2,
   radius1: F32,
@@ -304,17 +337,20 @@ extern "C"("CheckCollisionCircles") pub fn check_collision_circles(
   radius2: F32
 ) : Bool / Ffi
 
+#[doc("Returns true when a circle and a `Rect` overlap (raylib `CheckCollisionCircleRec`).")]
 extern "C"("CheckCollisionCircleRec") pub fn check_collision_circle_rec(
   center: Vector2,
   radius: F32,
   rec: Rect
 ) : Bool / Ffi
 
+#[doc("Returns true when `point` lies inside `rec` (raylib `CheckCollisionPointRec`).")]
 extern "C"("CheckCollisionPointRec") pub fn check_collision_point_rec(
   point: Vector2,
   rec: Rect
 ) : Bool / Ffi
 
+#[doc("Returns true when `point` lies inside the circle (raylib `CheckCollisionPointCircle`).")]
 extern "C"("CheckCollisionPointCircle") pub fn check_collision_point_circle(
   point: Vector2,
   center: Vector2,
@@ -328,14 +364,17 @@ extern "C"("CheckCollisionPointCircle") pub fn check_collision_point_circle(
 # `source` is the sub-rectangle to sample, `dest` where to put it (with
 # scaling), `origin` the pivot for `rotation`.
 
+#[doc("Loads an image file into GPU memory as a `Texture2D` (raylib `LoadTexture`).")]
 extern "C"("LoadTexture") pub fn load_texture(
   path: String
 ) : Texture2D / Ffi
 
+#[doc("Frees a texture's GPU memory (raylib `UnloadTexture`).")]
 extern "C"("UnloadTexture") pub fn unload_texture(
   texture: Texture2D
 ) : Unit / Ffi
 
+#[doc("Draws a texture at integer `x`, `y`, multiplied by `tint` (raylib `DrawTexture`).")]
 extern "C"("DrawTexture") pub fn draw_texture(
   texture: Texture2D,
   x: I32,
@@ -343,12 +382,14 @@ extern "C"("DrawTexture") pub fn draw_texture(
   tint: Color
 ) : Unit / Ffi
 
+#[doc("Draws a texture at a `Vector2` position (raylib `DrawTextureV`).")]
 extern "C"("DrawTextureV") pub fn draw_texture_v(
   texture: Texture2D,
   position: Vector2,
   tint: Color
 ) : Unit / Ffi
 
+#[doc("Draws a texture with rotation (degrees) and uniform scale (raylib `DrawTextureEx`).")]
 extern "C"("DrawTextureEx") pub fn draw_texture_ex(
   texture: Texture2D,
   position: Vector2,
@@ -357,6 +398,7 @@ extern "C"("DrawTextureEx") pub fn draw_texture_ex(
   tint: Color
 ) : Unit / Ffi
 
+#[doc("Draws the `source` sub-rectangle of a texture at `position` (raylib `DrawTextureRec`).")]
 extern "C"("DrawTextureRec") pub fn draw_texture_rec(
   texture: Texture2D,
   source: Rect,
@@ -364,6 +406,7 @@ extern "C"("DrawTextureRec") pub fn draw_texture_rec(
   tint: Color
 ) : Unit / Ffi
 
+#[doc("Draws `source` of a texture scaled into `dest`, rotated about `origin` (raylib `DrawTexturePro`).")]
 extern "C"("DrawTexturePro") pub fn draw_texture_pro(
   texture: Texture2D,
   source: Rect,
@@ -380,17 +423,21 @@ extern "C"("DrawTexturePro") pub fn draw_texture_pro(
 # zoom via zoom). The screen<->world helpers convert a point the same
 # way, e.g. to turn a mouse position into a world coordinate.
 
+#[doc("Starts drawing through a 2D camera; pair with `end_mode_2d` (raylib `BeginMode2D`).")]
 extern "C"("BeginMode2D") pub fn begin_mode_2d(
   camera: Camera2D
 ) : Unit / Ffi
 
+#[doc("Ends 2D camera mode started by `begin_mode_2d` (raylib `EndMode2D`).")]
 extern "C"("EndMode2D") pub fn end_mode_2d() : Unit / Ffi
 
+#[doc("Converts a world-space point to screen space through `camera` (raylib `GetWorldToScreen2D`).")]
 extern "C"("GetWorldToScreen2D") pub fn get_world_to_screen_2d(
   position: Vector2,
   camera: Camera2D
 ) : Vector2 / Ffi
 
+#[doc("Converts a screen-space point to world space through `camera` (raylib `GetScreenToWorld2D`).")]
 extern "C"("GetScreenToWorld2D") pub fn get_screen_to_world_2d(
   position: Vector2,
   camera: Camera2D
@@ -402,76 +449,95 @@ extern "C"("GetScreenToWorld2D") pub fn get_screen_to_world_2d(
 # every frame the key is held (use it for continuous movement). Key
 # codes live in `ffi/keys.kai` (`import ffi.keys`).
 
+#[doc("Returns true on the frame `key` goes down (raylib `IsKeyPressed`).")]
 extern "C"("IsKeyPressed") pub fn is_key_pressed(
   key: I32
 ) : Bool / Ffi
 
+#[doc("Returns true every frame `key` is held (raylib `IsKeyDown`).")]
 extern "C"("IsKeyDown") pub fn is_key_down(
   key: I32
 ) : Bool / Ffi
 
+#[doc("Returns true on the frame `key` is released (raylib `IsKeyReleased`).")]
 extern "C"("IsKeyReleased") pub fn is_key_released(
   key: I32
 ) : Bool / Ffi
 
+#[doc("Returns true while `key` is not held (raylib `IsKeyUp`).")]
 extern "C"("IsKeyUp") pub fn is_key_up(
   key: I32
 ) : Bool / Ffi
 
-# Pop the next queued keycode / unicode char (0 when the queue drains).
+#[doc("Pops the next queued key code, or 0 when the queue is empty (raylib `GetKeyPressed`).")]
 extern "C"("GetKeyPressed") pub fn get_key_pressed() : I32 / Ffi
 
+#[doc("Pops the next queued Unicode character, or 0 when the queue is empty (raylib `GetCharPressed`).")]
 extern "C"("GetCharPressed") pub fn get_char_pressed() : I32 / Ffi
 
 # ----- input: mouse -----
 
+#[doc("Returns true on the frame `button` goes down (raylib `IsMouseButtonPressed`).")]
 extern "C"("IsMouseButtonPressed") pub fn is_mouse_button_pressed(
   button: I32
 ) : Bool / Ffi
 
+#[doc("Returns true every frame `button` is held (raylib `IsMouseButtonDown`).")]
 extern "C"("IsMouseButtonDown") pub fn is_mouse_button_down(
   button: I32
 ) : Bool / Ffi
 
+#[doc("Returns true on the frame `button` is released (raylib `IsMouseButtonReleased`).")]
 extern "C"("IsMouseButtonReleased") pub fn is_mouse_button_released(
   button: I32
 ) : Bool / Ffi
 
+#[doc("Returns the mouse X position in pixels (raylib `GetMouseX`).")]
 extern "C"("GetMouseX") pub fn get_mouse_x() : I32 / Ffi
 
+#[doc("Returns the mouse Y position in pixels (raylib `GetMouseY`).")]
 extern "C"("GetMouseY") pub fn get_mouse_y() : I32 / Ffi
 
+#[doc("Returns the mouse position as a `Vector2` (raylib `GetMousePosition`).")]
 extern "C"("GetMousePosition") pub fn get_mouse_position() : Vector2 / Ffi
 
+#[doc("Returns how far the mouse moved since the previous frame (raylib `GetMouseDelta`).")]
 extern "C"("GetMouseDelta") pub fn get_mouse_delta() : Vector2 / Ffi
 
+#[doc("Moves the mouse cursor to `x`, `y` (raylib `SetMousePosition`).")]
 extern "C"("SetMousePosition") pub fn set_mouse_position(
   x: I32,
   y: I32
 ) : Unit / Ffi
 
+#[doc("Returns the mouse wheel movement for this frame (raylib `GetMouseWheelMove`).")]
 extern "C"("GetMouseWheelMove") pub fn get_mouse_wheel_move() : F32 / Ffi
 
+#[doc("Sets the cursor shape to a `keys.mouse_cursor_*` code (raylib `SetMouseCursor`).")]
 extern "C"("SetMouseCursor") pub fn set_mouse_cursor(
   cursor: I32
 ) : Unit / Ffi
 
 # ----- input: gamepad -----
 
+#[doc("Returns true when gamepad number `gamepad` is connected (raylib `IsGamepadAvailable`).")]
 extern "C"("IsGamepadAvailable") pub fn is_gamepad_available(
   gamepad: I32
 ) : Bool / Ffi
 
+#[doc("Returns true on the frame a gamepad button goes down (raylib `IsGamepadButtonPressed`).")]
 extern "C"("IsGamepadButtonPressed") pub fn is_gamepad_button_pressed(
   gamepad: I32,
   button: I32
 ) : Bool / Ffi
 
+#[doc("Returns true every frame a gamepad button is held (raylib `IsGamepadButtonDown`).")]
 extern "C"("IsGamepadButtonDown") pub fn is_gamepad_button_down(
   gamepad: I32,
   button: I32
 ) : Bool / Ffi
 
+#[doc("Returns the current value of a gamepad axis (raylib `GetGamepadAxisMovement`).")]
 extern "C"("GetGamepadAxisMovement") pub fn get_gamepad_axis_movement(
   gamepad: I32,
   axis: I32
@@ -479,10 +545,12 @@ extern "C"("GetGamepadAxisMovement") pub fn get_gamepad_axis_movement(
 
 # ----- random -----
 
+#[doc("Seeds raylib's random generator (raylib `SetRandomSeed`).")]
 extern "C"("SetRandomSeed") pub fn set_random_seed(
   s: I32
 ) : Unit / Ffi
 
+#[doc("Returns a random integer between `min` and `max`, both inclusive (raylib `GetRandomValue`).")]
 extern "C"("GetRandomValue") pub fn get_random_value(
   min: I32,
   max: I32
@@ -495,6 +563,7 @@ extern "C"("GetRandomValue") pub fn get_random_value(
 # DrawTextEx / MeasureTextEx. draw_text_ex takes I32 x/y and packs the
 # Vector2 position itself, keeping the call site's pixel-integer feel.
 
+#[doc("Loads a font file baked at `size`; `codepoints` is an opaque C pointer, 0 with `count` 0 for the default set (raylib `LoadFontEx`).")]
 extern "C"("LoadFontEx") pub fn load_font_ex(
   path: String,
   size: I32,
@@ -502,10 +571,11 @@ extern "C"("LoadFontEx") pub fn load_font_ex(
   count: I32
 ) : Font / Ffi
 
-# Load a font with the default character set (codepoints = NULL, 0).
+#[doc("Loads a font file baked at `size` with the default character set.")]
 pub fn load_font(path: String, size: I32) : Font / Ffi =
   load_font_ex(path, size, 0, 0)
 
+#[doc("Frees a font's atlas and glyph data (raylib `UnloadFont`).")]
 extern "C"("UnloadFont") pub fn unload_font(
   font: Font
 ) : Unit / Ffi
@@ -519,6 +589,7 @@ extern "C"("DrawTextEx") fn draw_text_ex_v(
   color: Color
 ) : Unit / Ffi
 
+#[doc("Draws `s` with a custom `font` at integer `x`, `y`, `size` pixels tall, with extra `spacing` between glyphs (wraps raylib `DrawTextEx`).")]
 pub fn draw_text_ex(
   font: Font,
   s: String,
@@ -544,102 +615,124 @@ pub fn draw_text_ex(
 # C is gen_tone: synthesising a tone means allocating a sample buffer
 # and filling it, which the FFI can't express — see ffi/raylib_audio.c.
 
+#[doc("Initialises the audio device and context (raylib `InitAudioDevice`).")]
 extern "C"("InitAudioDevice") pub fn init_audio_device() : Unit / Ffi
 
+#[doc("Closes the audio device and context (raylib `CloseAudioDevice`).")]
 extern "C"("CloseAudioDevice") pub fn close_audio_device() : Unit / Ffi
 
+#[doc("Returns true once the audio device is initialised (raylib `IsAudioDeviceReady`).")]
 extern "C"("IsAudioDeviceReady") pub fn audio_device_ready() : Bool / Ffi
 
+#[doc("Sets the master volume, 1.0 being full (raylib `SetMasterVolume`).")]
 extern "C"("SetMasterVolume") pub fn set_master_volume(
   volume: F32
 ) : Unit / Ffi
 
 # Sounds (short SFX, fully loaded in memory).
 
+#[doc("Loads a sound file fully into memory (raylib `LoadSound`).")]
 extern "C"("LoadSound") pub fn load_sound(
   path: String
 ) : Sound / Ffi
 
-# Synthesise a mono sine of `seconds` at `freq` Hz (amp 0..1) into a
-# Sound — no file needed. The sample buffer can't be built in kaikai,
-# so this stays in the C shim.
+# The sample buffer can't be built in kaikai, so this binds the C shim
+# in ffi/raylib_audio.c rather than raylib directly.
+#[doc("Synthesises a mono sine `Sound` of `seconds` at `freq` Hz with amplitude `amp` (0..1), no file needed.")]
 extern "C"("kai_raylib_gen_tone") pub fn gen_tone(
   freq: F32,
   seconds: F32,
   amp: F32
 ) : Sound / Ffi
 
+#[doc("Plays a sound (raylib `PlaySound`).")]
 extern "C"("PlaySound") pub fn play_sound(
   sound: Sound
 ) : Unit / Ffi
 
+#[doc("Stops a playing sound (raylib `StopSound`).")]
 extern "C"("StopSound") pub fn stop_sound(
   sound: Sound
 ) : Unit / Ffi
 
+#[doc("Returns true while a sound is playing (raylib `IsSoundPlaying`).")]
 extern "C"("IsSoundPlaying") pub fn sound_playing(
   sound: Sound
 ) : Bool / Ffi
 
+#[doc("Sets a sound's volume, 1.0 being full (raylib `SetSoundVolume`).")]
 extern "C"("SetSoundVolume") pub fn set_sound_volume(
   sound: Sound,
   volume: F32
 ) : Unit / Ffi
 
+#[doc("Sets a sound's pitch, 1.0 being the original (raylib `SetSoundPitch`).")]
 extern "C"("SetSoundPitch") pub fn set_sound_pitch(
   sound: Sound,
   pitch: F32
 ) : Unit / Ffi
 
+#[doc("Frees a sound's sample data (raylib `UnloadSound`).")]
 extern "C"("UnloadSound") pub fn unload_sound(
   sound: Sound
 ) : Unit / Ffi
 
 # Music (long tracks, streamed; call update_music every frame).
 
+#[doc("Opens a music file for streaming (raylib `LoadMusicStream`).")]
 extern "C"("LoadMusicStream") pub fn load_music(
   path: String
 ) : Music / Ffi
 
+#[doc("Starts playing a music stream (raylib `PlayMusicStream`).")]
 extern "C"("PlayMusicStream") pub fn play_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Refills a music stream's buffers; call it every frame while playing (raylib `UpdateMusicStream`).")]
 extern "C"("UpdateMusicStream") pub fn update_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Stops a music stream (raylib `StopMusicStream`).")]
 extern "C"("StopMusicStream") pub fn stop_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Pauses a music stream (raylib `PauseMusicStream`).")]
 extern "C"("PauseMusicStream") pub fn pause_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Resumes a paused music stream (raylib `ResumeMusicStream`).")]
 extern "C"("ResumeMusicStream") pub fn resume_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Returns true while a music stream is playing (raylib `IsMusicStreamPlaying`).")]
 extern "C"("IsMusicStreamPlaying") pub fn music_playing(
   music: Music
 ) : Bool / Ffi
 
+#[doc("Sets a music stream's volume, 1.0 being full (raylib `SetMusicVolume`).")]
 extern "C"("SetMusicVolume") pub fn set_music_volume(
   music: Music,
   volume: F32
 ) : Unit / Ffi
 
+#[doc("Sets a music stream's pitch, 1.0 being the original (raylib `SetMusicPitch`).")]
 extern "C"("SetMusicPitch") pub fn set_music_pitch(
   music: Music,
   pitch: F32
 ) : Unit / Ffi
 
+#[doc("Seeks a music stream to `position` seconds (raylib `SeekMusicStream`).")]
 extern "C"("SeekMusicStream") pub fn seek_music(
   music: Music,
   position: F32
 ) : Unit / Ffi
 
+#[doc("Closes a music stream (raylib `UnloadMusicStream`).")]
 extern "C"("UnloadMusicStream") pub fn unload_music(
   music: Music
 ) : Unit / Ffi
@@ -650,43 +743,50 @@ extern "C"("UnloadMusicStream") pub fn unload_music(
 # color_from_hsv is handy for spreading hues; fade/color_alpha adjust
 # transparency; color_lerp blends two Colors.
 
+#[doc("Returns `color` with its alpha set to `alpha` (0..1) (raylib `Fade`).")]
 extern "C"("Fade") pub fn fade(
   color: Color,
   alpha: F32
 ) : Color / Ffi
 
+#[doc("Returns `color` with its alpha set to `alpha` (0..1) (raylib `ColorAlpha`).")]
 extern "C"("ColorAlpha") pub fn color_alpha(
   color: Color,
   alpha: F32
 ) : Color / Ffi
 
+#[doc("Builds a `Color` from hue (degrees 0..360) and saturation/value (0..1) (raylib `ColorFromHSV`).")]
 extern "C"("ColorFromHSV") pub fn color_from_hsv(
   hue: F32,
   saturation: F32,
   value: F32
 ) : Color / Ffi
 
+#[doc("Multiplies `color` by `tint` channel-wise (raylib `ColorTint`).")]
 extern "C"("ColorTint") pub fn color_tint(
   color: Color,
   tint: Color
 ) : Color / Ffi
 
+#[doc("Brightens or darkens `color` by `factor` in -1..1 (raylib `ColorBrightness`).")]
 extern "C"("ColorBrightness") pub fn color_brightness(
   color: Color,
   factor: F32
 ) : Color / Ffi
 
+#[doc("Blends `a` toward `b` by `factor` in 0..1 (raylib `ColorLerp`).")]
 extern "C"("ColorLerp") pub fn color_lerp(
   a: Color,
   b: Color,
   factor: F32
 ) : Color / Ffi
 
-# Pack/unpack a 0xRRGGBBAA int (GetColor is the inverse of color_to_int).
+#[doc("Unpacks a 0xRRGGBBAA integer into a `Color`; the inverse of `color_to_int` (raylib `GetColor`).")]
 extern "C"("GetColor") pub fn get_color(
   hex: I32
 ) : Color / Ffi
 
+#[doc("Packs a `Color` into a 0xRRGGBBAA integer; the inverse of `get_color` (raylib `ColorToInt`).")]
 extern "C"("ColorToInt") pub fn color_to_int(
   color: Color
 ) : I32 / Ffi
@@ -697,11 +797,13 @@ extern "C"("ColorToInt") pub fn color_to_int(
 # takes a custom Font (by value, like draw_text_ex) and returns the
 # {width, height} extent as a Vector2.
 
+#[doc("Returns the width in pixels of `s` in the default font at `size` (raylib `MeasureText`).")]
 extern "C"("MeasureText") pub fn measure_text(
   s: String,
   size: I32
 ) : I32 / Ffi
 
+#[doc("Returns the width and height of `s` in `font` as a `Vector2` (raylib `MeasureTextEx`).")]
 extern "C"("MeasureTextEx") pub fn measure_text_ex(
   font: Font,
   s: String,
@@ -709,6 +811,7 @@ extern "C"("MeasureTextEx") pub fn measure_text_ex(
   spacing: F32
 ) : Vector2 / Ffi
 
+#[doc("Sets the line spacing used when drawing multi-line text (raylib `SetTextLineSpacing`).")]
 extern "C"("SetTextLineSpacing") pub fn set_text_line_spacing(
   spacing: I32
 ) : Unit / Ffi
@@ -718,46 +821,65 @@ extern "C"("SetTextLineSpacing") pub fn set_text_line_spacing(
 # get_frame_time is the seconds elapsed since the last frame — the
 # delta to scale movement by so it's frame-rate independent.
 
+#[doc("Returns the seconds the last frame took, the delta for frame-rate independent motion (raylib `GetFrameTime`).")]
 extern "C"("GetFrameTime") pub fn get_frame_time() : F32 / Ffi
 
+#[doc("Blocks the program for `seconds` (raylib `WaitTime`).")]
 extern "C"("WaitTime") pub fn wait_time(
   seconds: Real
 ) : Unit / Ffi
 
 # ----- math (libm direct) -----
 
+#[doc("Sine of `x` in radians (libm `sin`).")]
 extern "C" pub fn sin(x: Real) : Real / Ffi
 
+#[doc("Cosine of `x` in radians (libm `cos`).")]
 extern "C" pub fn cos(x: Real) : Real / Ffi
 
+#[doc("Tangent of `x` in radians (libm `tan`).")]
 extern "C" pub fn tan(x: Real) : Real / Ffi
 
+#[doc("Arc sine of `x`, in radians (libm `asin`).")]
 extern "C" pub fn asin(x: Real) : Real / Ffi
 
+#[doc("Arc cosine of `x`, in radians (libm `acos`).")]
 extern "C" pub fn acos(x: Real) : Real / Ffi
 
+#[doc("Arc tangent of `x`, in radians (libm `atan`).")]
 extern "C" pub fn atan(x: Real) : Real / Ffi
 
+#[doc("Angle in radians of the point (`x`, `y`), using both signs to pick the quadrant (libm `atan2`).")]
 extern "C" pub fn atan2(y: Real, x: Real) : Real / Ffi
 
+#[doc("Square root of `x` (libm `sqrt`).")]
 extern "C" pub fn sqrt(x: Real) : Real / Ffi
 
+#[doc("`x` raised to the power `y` (libm `pow`).")]
 extern "C" pub fn pow(x: Real, y: Real) : Real / Ffi
 
+#[doc("e raised to the power `x` (libm `exp`).")]
 extern "C" pub fn exp(x: Real) : Real / Ffi
 
+#[doc("Natural logarithm of `x` (libm `log`).")]
 extern "C" pub fn log(x: Real) : Real / Ffi
 
+#[doc("Largest integral value not greater than `x` (libm `floor`).")]
 extern "C" pub fn floor(x: Real) : Real / Ffi
 
+#[doc("Smallest integral value not less than `x` (libm `ceil`).")]
 extern "C" pub fn ceil(x: Real) : Real / Ffi
 
+#[doc("`x` rounded to the nearest integral value, halfway cases away from zero (libm `round`).")]
 extern "C" pub fn round(x: Real) : Real / Ffi
 
+#[doc("Absolute value of `x` (libm `fabs`).")]
 extern "C" pub fn fabs(x: Real) : Real / Ffi
 
+#[doc("Floating-point remainder of `x / y`, with the sign of `x` (libm `fmod`).")]
 extern "C" pub fn fmod(x: Real, y: Real) : Real / Ffi
 
+#[doc("Length of the vector (`x`, `y`), sqrt(x² + y²) without overflow (libm `hypot`).")]
 extern "C" pub fn hypot(x: Real, y: Real) : Real / Ffi
 # raymath's scalar helpers (Clamp/Lerp/Remap/Wrap) are intentionally
 # NOT bound: they're one-liners in kaikai, and binding them under

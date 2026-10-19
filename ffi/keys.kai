@@ -7,247 +7,364 @@
 # ----- keyboard (KeyboardKey) -----
 
 # Navigation / editing.
+#[doc("Key code for the Space key.")]
 pub const key_space : Int = 32
 
+#[doc("Key code for the Escape key.")]
 pub const key_escape : Int = 256
 
+#[doc("Key code for the Enter key.")]
 pub const key_enter : Int = 257
 
+#[doc("Key code for the Tab key.")]
 pub const key_tab : Int = 258
 
+#[doc("Key code for the Backspace key.")]
 pub const key_backspace : Int = 259
 
+#[doc("Key code for the Insert key.")]
 pub const key_insert : Int = 260
 
+#[doc("Key code for the Delete key.")]
 pub const key_delete : Int = 261
 
+#[doc("Key code for the Right arrow key.")]
 pub const key_right : Int = 262
 
+#[doc("Key code for the Left arrow key.")]
 pub const key_left : Int = 263
 
+#[doc("Key code for the Down arrow key.")]
 pub const key_down : Int = 264
 
+#[doc("Key code for the Up arrow key.")]
 pub const key_up : Int = 265
 
+#[doc("Key code for the Page Up key.")]
 pub const key_page_up : Int = 266
 
+#[doc("Key code for the Page Down key.")]
 pub const key_page_down : Int = 267
 
+#[doc("Key code for the Home key.")]
 pub const key_home : Int = 268
 
+#[doc("Key code for the End key.")]
 pub const key_end : Int = 269
 
 # Modifiers.
+#[doc("Key code for the left Shift key.")]
 pub const key_left_shift : Int = 340
 
+#[doc("Key code for the left Control key.")]
 pub const key_left_control : Int = 341
 
+#[doc("Key code for the left Alt key.")]
 pub const key_left_alt : Int = 342
 
+#[doc("Key code for the left Super key.")]
 pub const key_left_super : Int = 343
 
+#[doc("Key code for the right Shift key.")]
 pub const key_right_shift : Int = 344
 
+#[doc("Key code for the right Control key.")]
 pub const key_right_control : Int = 345
 
+#[doc("Key code for the right Alt key.")]
 pub const key_right_alt : Int = 346
 
 # Symbols / digits.
+#[doc("Key code for the apostrophe (`'`) key.")]
 pub const key_apostrophe : Int = 39
 
+#[doc("Key code for the comma (`,`) key.")]
 pub const key_comma : Int = 44
 
+#[doc("Key code for the minus (`-`) key.")]
 pub const key_minus : Int = 45
 
+#[doc("Key code for the period (`.`) key.")]
 pub const key_period : Int = 46
 
+#[doc("Key code for the slash (`/`) key.")]
 pub const key_slash : Int = 47
 
+#[doc("Key code for the 0 key on the top row.")]
 pub const key_zero : Int = 48
 
+#[doc("Key code for the 1 key on the top row.")]
 pub const key_one : Int = 49
 
+#[doc("Key code for the 2 key on the top row.")]
 pub const key_two : Int = 50
 
+#[doc("Key code for the 3 key on the top row.")]
 pub const key_three : Int = 51
 
+#[doc("Key code for the 4 key on the top row.")]
 pub const key_four : Int = 52
 
+#[doc("Key code for the 5 key on the top row.")]
 pub const key_five : Int = 53
 
+#[doc("Key code for the 6 key on the top row.")]
 pub const key_six : Int = 54
 
+#[doc("Key code for the 7 key on the top row.")]
 pub const key_seven : Int = 55
 
+#[doc("Key code for the 8 key on the top row.")]
 pub const key_eight : Int = 56
 
+#[doc("Key code for the 9 key on the top row.")]
 pub const key_nine : Int = 57
 
+#[doc("Key code for the semicolon (`;`) key.")]
 pub const key_semicolon : Int = 59
 
+#[doc("Key code for the equal (`=`) key.")]
 pub const key_equal : Int = 61
 
 # Letters (A..Z = 65..90).
+#[doc("Key code for the A key.")]
 pub const key_a : Int = 65
 
+#[doc("Key code for the B key.")]
 pub const key_b : Int = 66
 
+#[doc("Key code for the C key.")]
 pub const key_c : Int = 67
 
+#[doc("Key code for the D key.")]
 pub const key_d : Int = 68
 
+#[doc("Key code for the E key.")]
 pub const key_e : Int = 69
 
+#[doc("Key code for the F key.")]
 pub const key_f : Int = 70
 
+#[doc("Key code for the G key.")]
 pub const key_g : Int = 71
 
+#[doc("Key code for the H key.")]
 pub const key_h : Int = 72
 
+#[doc("Key code for the I key.")]
 pub const key_i : Int = 73
 
+#[doc("Key code for the J key.")]
 pub const key_j : Int = 74
 
+#[doc("Key code for the K key.")]
 pub const key_k : Int = 75
 
+#[doc("Key code for the L key.")]
 pub const key_l : Int = 76
 
+#[doc("Key code for the M key.")]
 pub const key_m : Int = 77
 
+#[doc("Key code for the N key.")]
 pub const key_n : Int = 78
 
+#[doc("Key code for the O key.")]
 pub const key_o : Int = 79
 
+#[doc("Key code for the P key.")]
 pub const key_p : Int = 80
 
+#[doc("Key code for the Q key.")]
 pub const key_q : Int = 81
 
+#[doc("Key code for the R key.")]
 pub const key_r : Int = 82
 
+#[doc("Key code for the S key.")]
 pub const key_s : Int = 83
 
+#[doc("Key code for the T key.")]
 pub const key_t : Int = 84
 
+#[doc("Key code for the U key.")]
 pub const key_u : Int = 85
 
+#[doc("Key code for the V key.")]
 pub const key_v : Int = 86
 
+#[doc("Key code for the W key.")]
 pub const key_w : Int = 87
 
+#[doc("Key code for the X key.")]
 pub const key_x : Int = 88
 
+#[doc("Key code for the Y key.")]
 pub const key_y : Int = 89
 
+#[doc("Key code for the Z key.")]
 pub const key_z : Int = 90
 
 # Function keys (F1..F12 = 290..301).
+#[doc("Key code for the F1 function key.")]
 pub const key_f1 : Int = 290
 
+#[doc("Key code for the F2 function key.")]
 pub const key_f2 : Int = 291
 
+#[doc("Key code for the F3 function key.")]
 pub const key_f3 : Int = 292
 
+#[doc("Key code for the F4 function key.")]
 pub const key_f4 : Int = 293
 
+#[doc("Key code for the F5 function key.")]
 pub const key_f5 : Int = 294
 
+#[doc("Key code for the F6 function key.")]
 pub const key_f6 : Int = 295
 
+#[doc("Key code for the F7 function key.")]
 pub const key_f7 : Int = 296
 
+#[doc("Key code for the F8 function key.")]
 pub const key_f8 : Int = 297
 
+#[doc("Key code for the F9 function key.")]
 pub const key_f9 : Int = 298
 
+#[doc("Key code for the F10 function key.")]
 pub const key_f10 : Int = 299
 
+#[doc("Key code for the F11 function key.")]
 pub const key_f11 : Int = 300
 
+#[doc("Key code for the F12 function key.")]
 pub const key_f12 : Int = 301
 
 # Keypad.
+#[doc("Key code for the keypad 0 key.")]
 pub const key_kp_0 : Int = 320
 
+#[doc("Key code for the keypad 1 key.")]
 pub const key_kp_1 : Int = 321
 
+#[doc("Key code for the keypad 2 key.")]
 pub const key_kp_2 : Int = 322
 
+#[doc("Key code for the keypad 3 key.")]
 pub const key_kp_3 : Int = 323
 
+#[doc("Key code for the keypad 4 key.")]
 pub const key_kp_4 : Int = 324
 
+#[doc("Key code for the keypad 5 key.")]
 pub const key_kp_5 : Int = 325
 
+#[doc("Key code for the keypad 6 key.")]
 pub const key_kp_6 : Int = 326
 
+#[doc("Key code for the keypad 7 key.")]
 pub const key_kp_7 : Int = 327
 
+#[doc("Key code for the keypad 8 key.")]
 pub const key_kp_8 : Int = 328
 
+#[doc("Key code for the keypad 9 key.")]
 pub const key_kp_9 : Int = 329
 
+#[doc("Key code for the keypad minus key.")]
 pub const key_kp_subtract : Int = 333
 
+#[doc("Key code for the keypad plus key.")]
 pub const key_kp_add : Int = 334
 
+#[doc("Key code for the keypad Enter key.")]
 pub const key_kp_enter : Int = 335
 
 # ----- mouse (MouseButton) -----
 
+#[doc("Mouse button code for the left button.")]
 pub const mouse_button_left : Int = 0
 
+#[doc("Mouse button code for the right button.")]
 pub const mouse_button_right : Int = 1
 
+#[doc("Mouse button code for the middle (wheel) button.")]
 pub const mouse_button_middle : Int = 2
 
+#[doc("Mouse button code for the side (advanced mice) button.")]
 pub const mouse_button_side : Int = 3
 
+#[doc("Mouse button code for the extra (advanced mice) button.")]
 pub const mouse_button_extra : Int = 4
 
+#[doc("Mouse button code for the forward (advanced mice) button.")]
 pub const mouse_button_forward : Int = 5
 
+#[doc("Mouse button code for the back (advanced mice) button.")]
 pub const mouse_button_back : Int = 6
 
 # ----- mouse cursor (MouseCursor) — arg to set_mouse_cursor -----
 
+#[doc("Cursor code for the default cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_default : Int = 0
 
+#[doc("Cursor code for the arrow cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_arrow : Int = 1
 
+#[doc("Cursor code for the text I-beam cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_ibeam : Int = 2
 
+#[doc("Cursor code for the crosshair cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_crosshair : Int = 3
 
+#[doc("Cursor code for the pointing-hand cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_pointing_hand : Int = 4
 
+#[doc("Cursor code for the horizontal (east-west) resize cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_resize_ew : Int = 5
 
+#[doc("Cursor code for the vertical (north-south) resize cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_resize_ns : Int = 6
 
+#[doc("Cursor code for the operation-not-allowed cursor; pass to `set_mouse_cursor`.")]
 pub const mouse_cursor_not_allowed : Int = 10
 
 # ----- gamepad -----
 
+#[doc("Gamepad button code for the left-face up button (D-pad up).")]
 pub const gamepad_button_left_face_up : Int = 1
 
+#[doc("Gamepad button code for the left-face right button (D-pad right).")]
 pub const gamepad_button_left_face_right : Int = 2
 
+#[doc("Gamepad button code for the left-face down button (D-pad down).")]
 pub const gamepad_button_left_face_down : Int = 3
 
+#[doc("Gamepad button code for the left-face left button (D-pad left).")]
 pub const gamepad_button_left_face_left : Int = 4
 
+#[doc("Gamepad button code for the right-face up button (Xbox Y, PS Triangle).")]
 pub const gamepad_button_right_face_up : Int = 5
 
+#[doc("Gamepad button code for the right-face right button (Xbox B, PS Circle).")]
 pub const gamepad_button_right_face_right : Int = 6
 
+#[doc("Gamepad button code for the right-face down button (Xbox A, PS Cross).")]
 pub const gamepad_button_right_face_down : Int = 7
 
+#[doc("Gamepad button code for the right-face left button (Xbox X, PS Square).")]
 pub const gamepad_button_right_face_left : Int = 8
 
+#[doc("Gamepad axis code for the left stick's X axis.")]
 pub const gamepad_axis_left_x : Int = 0
 
+#[doc("Gamepad axis code for the left stick's Y axis.")]
 pub const gamepad_axis_left_y : Int = 1
 
+#[doc("Gamepad axis code for the right stick's X axis.")]
 pub const gamepad_axis_right_x : Int = 2
 
+#[doc("Gamepad axis code for the right stick's Y axis.")]
 pub const gamepad_axis_right_y : Int = 3
