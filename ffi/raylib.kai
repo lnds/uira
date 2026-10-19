@@ -737,6 +737,16 @@ extern "C"("UnloadMusicStream") pub fn unload_music(
   music: Music
 ) : Unit / Ffi
 
+#[doc("Returns `music` set to loop, or not, when it reaches the end; raylib reads the flag from the struct on each update.")]
+pub fn set_music_looping(music: Music, on: Bool) : Music =
+  Music {
+    stream: music.stream,
+    frame_count: music.frame_count,
+    looping: if on { 1 } else { 0 },
+    ctx_type: music.ctx_type,
+    ctx_data: music.ctx_data
+  }
+
 # ----- colour helpers (Color by value) -----
 #
 # rgba() packs a hex literal; these transform Colors raylib's way.
